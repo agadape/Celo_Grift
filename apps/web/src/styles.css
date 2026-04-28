@@ -166,7 +166,7 @@ button:hover {
 .shell.narrow {
   max-width: 640px;
   margin: 0 auto;
-  padding-top: 48px;
+  padding-top: 36px;
 }
 
 .page-title {
@@ -886,6 +886,72 @@ a:hover {
   font-size: 0.9rem;
 }
 
+/* ─── Nav bar ────────────────────────────────────────────────────── */
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 56px;
+  background: rgba(247, 248, 243, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #e4ece2;
+}
+
+.navbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #0f2d1e;
+  letter-spacing: -0.01em;
+}
+
+.navbar-brand:hover {
+  color: #0f2d1e;
+}
+
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.navbar-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 13px;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #506157;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.navbar-link:hover,
+.navbar-link.active {
+  background: #eff6ef;
+  color: #0f2d1e;
+}
+
+.navbar-link--cta {
+  background: #0f2d1e;
+  color: #ffffff !important;
+  margin-left: 4px;
+}
+
+.navbar-link--cta:hover,
+.navbar-link--cta.active {
+  background: #1a4230;
+  color: #ffffff !important;
+}
+
 /* ─── Home stats ─────────────────────────────────────────────────── */
 .home-stats {
   display: flex;
@@ -1362,18 +1428,30 @@ a:hover {
 }
 
 @media (max-width: 860px) {
+  .navbar {
+    padding: 0 16px;
+  }
+
+  .navbar-link:not(.navbar-link--cta) {
+    display: none;
+  }
+
   .shell {
     padding: 20px;
   }
 
   .shell.narrow {
-    padding-top: 28px;
+    padding-top: 24px;
   }
 
   .hero {
     grid-template-columns: 1fr;
     min-height: auto;
-    padding: 40px 0 28px;
+    padding: 32px 0 24px;
+  }
+
+  .hero h1 {
+    font-size: clamp(3rem, 15vw, 5.5rem);
   }
 
   .workflow {
@@ -1387,6 +1465,85 @@ a:hover {
 
   .lb-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* CTA row wraps nicely on small screens */
+  .cta-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Overlay config */
+  .ov-config-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .ov-config-row select {
+    width: 100% !important;
+  }
+
+  /* Cross-chain widget */
+  .xchain-controls {
+    flex-direction: column;
+  }
+
+  .xchain-controls select,
+  .xchain-amount-input {
+    width: 100% !important;
+  }
+
+  /* Dashboard link row */
+  .dash-link-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dash-link {
+    width: 100%;
+    white-space: normal;
+    word-break: break-all;
+  }
+
+  /* Leaderboard items on small phones */
+  .lb-amount {
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .explore-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .emoji-row {
+    gap: 4px;
+  }
+
+  .emoji-btn {
+    width: 36px;
+    font-size: 1.1rem;
+  }
+
+  /* Tip goal header wraps */
+  .tip-goal-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  /* Creator meta row stacks */
+  .creator-meta-row {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
