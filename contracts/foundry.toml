@@ -1,0 +1,30 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+test = "test"
+script = "script"
+solc_version = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+evm_version = "paris"
+remappings = [
+    "forge-std/=lib/forge-std/src/",
+]
+
+[profile.default.fuzz]
+runs = 256
+
+[rpc_endpoints]
+celo = "https://forno.celo.org"
+celo_sepolia = "https://forno.celo-sepolia.celo-testnet.org"
+
+[etherscan]
+celo = { key = "${CELOSCAN_API_KEY}", chain = 42220, url = "https://api.celoscan.io/api" }
+celo_sepolia = { key = "verifyContract", chain = 11142220, url = "https://celo-sepolia.blockscout.com/api" }
+
+[fmt]
+line_length = 100
+tab_width = 4
+bracket_spacing = false
+int_types = "long"
