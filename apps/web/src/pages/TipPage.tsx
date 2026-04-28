@@ -76,6 +76,13 @@ export function TipPage() {
   useEffect(() => {
     if (typeof window !== "undefined" && window.ethereum?.isMiniPay) void handleConnect();
   }, []);
+  useEffect(() => {
+    if (lookup.kind === "found") {
+      const name = decodeMetadata(lookup.creator.metadataURI)?.name || `@${lookup.creator.handle}`;
+      document.title = `Tip ${name} · SawerLink`;
+    }
+    return () => { document.title = "SawerLink"; };
+  }, [lookup]);
 
   function handleTokenChange(idx: number) {
     setSelectedTokenIdx(idx);
