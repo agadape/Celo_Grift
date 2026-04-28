@@ -886,6 +886,26 @@ a:hover {
   font-size: 0.9rem;
 }
 
+/* ─── Home stats ─────────────────────────────────────────────────── */
+.home-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 4px;
+  font-size: 1rem;
+  color: #334139;
+}
+
+.home-stats strong {
+  color: #0f2d1e;
+  font-weight: 800;
+}
+
+.home-stats-dot {
+  color: #35d07f;
+  font-weight: 800;
+}
+
 /* ─── Tip goal ──────────────────────────────────────────────────── */
 .tip-goal {
   margin: 0 0 20px;

@@ -1,16 +1,57 @@
+import {useEffect, useState} from "react";
 import {Link} from "react-router-dom";
+import {publicClient, ACTIVE_CHAIN} from "../lib/publicClient";
+import {SAWER_REGISTRY_ABI, getActiveRegistry} from "../lib/contract";
+
+function usePlatformStats() {
+  const [stats, setStats] = useState<{creators: number; tips: number} | null>(null);
+  useEffect(() => {
+    const registry = getActiveRegistry();
+    async function load() {
+      try {
+        const [creatorLogs, tipLogs] = await Promise.all([
+          publicClient.getLogs({
+            address: registry.address,
+            event: SAWER_REGISTRY_ABI.find((x) => x.type === "event" && x.name === "CreatorRegistered") as (typeof SAWER_REGISTRY_ABI)[number] & {type: "event"},
+            fromBlock: registry.deployBlock,
+            toBlock: "latest",
+          }),
+          publicClient.getLogs({
+            address: registry.address,
+            event: SAWER_REGISTRY_ABI.find((x) => x.type === "event" && x.name === "TipReceipt") as (typeof SAWER_REGISTRY_ABI)[number] & {type: "event"},
+            fromBlock: registry.deployBlock,
+            toBlock: "latest",
+          }),
+        ]);
+        const uniqueCreators = new Set(creatorLogs.map((l) => (l.args as {creator?: string}).creator?.toLowerCase())).size;
+        setStats({creators: uniqueCreators, tips: tipLogs.length});
+      } catch { /* non-critical */ }
+    }
+    void load();
+  }, []);
+  return stats;
+}
 
 export function HomePage() {
+  const stats = usePlatformStats();
+
   return (
     <main className="shell">
       <section className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">Celo Proof of Ship</p>
+          <p className="eyebrow">Celo · {ACTIVE_CHAIN.name}</p>
           <h1>SawerLink</h1>
           <p className="lede">
             One creator tipping link. Supporters pay from any LI.FI-supported
             chain. Creators receive stablecoins on Celo MiniPay.
           </p>
+          {stats && (
+            <div className="home-stats">
+              <span><strong>{stats.creators}</strong> creator{stats.creators !== 1 ? "s" : ""}</span>
+              <span className="home-stats-dot">·</span>
+              <span><strong>{stats.tips}</strong> tip{stats.tips !== 1 ? "s" : ""} sent</span>
+            </div>
+          )}
           <div className="cta-row">
             <Link to="/create" className="btn-primary">
               Create your link
