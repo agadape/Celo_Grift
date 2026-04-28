@@ -18,6 +18,9 @@ export function HomePage() {
             <Link to="/s/sawerlink" className="btn-secondary">
               Try a demo tip
             </Link>
+            <Link to="/explore" className="btn-secondary">
+              Explore creators
+            </Link>
           </div>
         </div>
 
