@@ -3,11 +3,18 @@ export interface CreatorLink {
   url: string;
 }
 
+export interface TipGoal {
+  label: string;  // e.g. "New microphone"
+  target: string; // amount as string, in the chosen token's unit
+  token: string;  // "CELO" | "cUSD" | "USDC" | "USDT"
+}
+
 export interface CreatorProfile {
   name: string;
   bio: string;
   avatar: string;
   links: CreatorLink[];
+  goal?: TipGoal;
 }
 
 const DATA_URI_PREFIX = "data:application/json;utf8,";
@@ -36,11 +43,20 @@ export function decodeMetadata(uri: string): CreatorProfile | null {
       .slice(0, 8)
       .map((l) => ({label: l.label.trim().slice(0, 40), url: l.url.trim().slice(0, 200)}));
 
+    let goal: TipGoal | undefined;
+    if (typeof obj.goal === "object" && obj.goal !== null) {
+      const g = obj.goal as Record<string, unknown>;
+      if (typeof g.label === "string" && typeof g.target === "string" && typeof g.token === "string") {
+        goal = {label: g.label.trim().slice(0, 80), target: g.target.trim(), token: g.token.trim()};
+      }
+    }
+
     return {
       name: typeof obj.name === "string" ? obj.name.trim() : "",
       bio: typeof obj.bio === "string" ? obj.bio.trim() : "",
       avatar: typeof obj.avatar === "string" ? obj.avatar.trim() : "",
       links,
+      goal,
     };
   } catch {
     return null;
