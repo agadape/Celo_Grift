@@ -1272,6 +1272,95 @@ a:hover {
   flex-shrink: 0;
 }
 
+/* ─── Global leaderboard page ────────────────────────────────────── */
+.lb-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 28px;
+}
+
+.lb-panel {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid #d6dfd3;
+  border-radius: 10px;
+  background: #ffffff;
+  align-content: start;
+}
+
+.lb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.lb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f5f0;
+}
+
+.lb-item:last-child {
+  border-bottom: none;
+}
+
+.lb-rank {
+  width: 28px;
+  flex-shrink: 0;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: #9aafA0;
+  text-align: center;
+}
+
+.lb-rank--gold   { color: #b8860b; }
+.lb-rank--silver { color: #7a8a8f; }
+.lb-rank--bronze { color: #8a5a3a; }
+
+.lb-item-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.lb-handle {
+  font-weight: 700;
+  color: #0f2d1e;
+  font-size: 0.9rem;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lb-handle:hover {
+  color: #35d07f;
+}
+
+.lb-meta {
+  font-size: 0.78rem;
+  color: #5f6f63;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lb-amount {
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #0f2d1e;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 @media (max-width: 860px) {
   .shell {
     padding: 20px;
@@ -1294,6 +1383,10 @@ a:hover {
 
   .explore-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .lb-grid {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -62,6 +62,9 @@ export function HomePage() {
             <Link to="/explore" className="btn-secondary">
               Explore creators
             </Link>
+            <Link to="/leaderboard" className="btn-secondary">
+              Leaderboard
+            </Link>
           </div>
         </div>
 
