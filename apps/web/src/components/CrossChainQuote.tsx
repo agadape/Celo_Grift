@@ -15,6 +15,7 @@ import {publicClient, ACTIVE_CHAIN} from "../lib/publicClient";
 import {SAWER_REGISTRY_ABI, getActiveRegistry} from "../lib/contract";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+const REACTIONS = ["🔥", "❤️", "💎", "🚀", "👑", "⚡", "🎉", "💯"];
 
 interface Props {
   supporterAddress: string | null;
@@ -37,6 +38,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
   const [fromTokenIdx, setFromTokenIdx] = useState(0);
   const [fromAmount, setFromAmount] = useState("10");
   const [message, setMessage] = useState("");
+  const [reaction, setReaction] = useState("");
   const [quoteState, setQuoteState] = useState<
     {kind: "idle"} | {kind: "loading"} | CrossChainQuoteResult
   >({kind: "idle"});
@@ -135,6 +137,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
       const walletClient = getWalletClient();
       const toAmount = BigInt(step.estimate?.toAmount ?? "0");
 
+      const fullMessage = reaction ? `${reaction} ${message}`.trim() : message;
       const receiptTxHash = await walletClient.writeContract({
         account: supporterAddress as Address,
         address: registry.address,
@@ -144,7 +147,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
           creatorHandle,
           ZERO_ADDRESS,
           toAmount,
-          message.slice(0, 200),
+          fullMessage.slice(0, 200),
           sourceTxHash,
         ],
       });
@@ -152,6 +155,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
 
       setExecState({kind: "done", sourceTxHash, receiptTxHash});
       setMessage("");
+      setReaction("");
     } catch (err) {
       setExecState({
         kind: "exec-error",
@@ -243,6 +247,22 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
             </span>
           </div>
           <p className="hint">via {quoteState.tool}</p>
+
+          <div>
+            <span className="label">Reaction <span className="opt">(optional)</span></span>
+            <div className="emoji-row">
+              {REACTIONS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  className={reaction === e ? "emoji-btn active" : "emoji-btn"}
+                  onClick={() => setReaction(reaction === e ? "" : e)}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <label>
             <span className="label">Message (optional)</span>
