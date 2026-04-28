@@ -8,9 +8,11 @@ import {CELO_TOKENS} from "../lib/tokens";
 
 const REGISTRY = getActiveRegistry();
 const POLL_MS = 5_000;
-const DISPLAY_MS = 7_000;
 const ENTRANCE_MS = 500;
 const EXIT_MS = 600;
+
+// Known reaction emojis (same set as TipPage)
+const REACTIONS = ["🔥", "❤️", "💎", "🚀", "👑", "⚡", "🎉", "💯"];
 
 interface TipAlert {
   id: string;
@@ -19,21 +21,33 @@ interface TipAlert {
   message: string;
 }
 
-// Audio — created lazily after user gesture
+// Position map: URL param → CSS values
+const POSITIONS: Record<string, React.CSSProperties> = {
+  "bottom-center": {bottom: 72, left: "50%", transform: "translateX(-50%)"},
+  "bottom-left":   {bottom: 72, left: 24},
+  "bottom-right":  {bottom: 72, right: 24},
+  "top-left":      {top: 24,    left: 24},
+  "top-right":     {top: 24,    right: 24},
+};
+const ENTER_ANIM: Record<string, string> = {
+  "bottom-center": "ov-enter-up",
+  "bottom-left":   "ov-enter-left",
+  "bottom-right":  "ov-enter-right",
+  "top-left":      "ov-enter-left",
+  "top-right":     "ov-enter-right",
+};
+
 let _ctx: AudioContext | null = null;
 let _customAudio: HTMLAudioElement | null = null;
 
 function unlockAudio() {
   if (!_ctx) _ctx = new AudioContext();
   if (_ctx.state === "suspended") void _ctx.resume();
-
-  // Try loading custom sound if dropped in /public
   _customAudio = new Audio("/tip_alert.wav");
   _customAudio.load();
 }
 
 function playAlert() {
-  // Prefer custom sound file if it loaded cleanly
   if (_customAudio && _customAudio.readyState >= 2) {
     _customAudio.currentTime = 0;
     void _customAudio.play().catch(() => fallbackChime());
@@ -42,12 +56,10 @@ function playAlert() {
   fallbackChime();
 }
 
-// Web Audio API ascending arpeggio: C5 E5 G5 B5
 function fallbackChime() {
   if (!_ctx) return;
   const ctx = _ctx;
-  const notes = [523.25, 659.25, 783.99, 987.77];
-  notes.forEach((freq, i) => {
+  [523.25, 659.25, 783.99, 987.77].forEach((freq, i) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -66,9 +78,7 @@ function fallbackChime() {
 function getTokenInfo(addr: Address): {symbol: string; decimals: number} {
   const ZERO = "0x0000000000000000000000000000000000000000";
   if (addr.toLowerCase() === ZERO) return {symbol: "CELO", decimals: 18};
-  const t = CELO_TOKENS.find(
-    (x) => x.address !== "native" && x.address.toLowerCase() === addr.toLowerCase(),
-  );
+  const t = CELO_TOKENS.find((x) => x.address !== "native" && x.address.toLowerCase() === addr.toLowerCase());
   return t ? {symbol: t.symbol, decimals: t.decimals} : {symbol: "tokens", decimals: 18};
 }
 
@@ -79,11 +89,18 @@ function formatAmount(amount: bigint, token: Address): string {
   return `${str} ${symbol}`;
 }
 
+function parseReaction(msg: string): {emoji: string; text: string} {
+  for (const r of REACTIONS) {
+    if (msg.startsWith(r)) return {emoji: r, text: msg.slice(r.length).trimStart()};
+  }
+  return {emoji: "", text: msg};
+}
+
 const TEST_ALERT: TipAlert = {
   id: "test",
-  amount: 5_000_000_000_000_000_000n, // 5 CELO
+  amount: 5_000_000_000_000_000_000n,
   token: "0x0000000000000000000000000000000000000000" as Address,
-  message: "Great stream, keep it up! 🔥",
+  message: "🔥 Great stream, keep it up!",
 };
 
 export function OverlayPage() {
@@ -91,6 +108,15 @@ export function OverlayPage() {
   const [searchParams] = useSearchParams();
   const isTest = searchParams.get("test") === "1";
   const normalized = handle.toLowerCase();
+
+  // Customization from URL params
+  const pos = searchParams.get("pos") ?? "bottom-center";
+  const accentRaw = searchParams.get("accent") ?? "35d07f";
+  const accent = accentRaw.startsWith("#") ? accentRaw : `#${accentRaw}`;
+  const displayMs = Math.max(3, Math.min(15, Number(searchParams.get("dur") ?? 7))) * 1000;
+
+  const posStyle = POSITIONS[pos] ?? POSITIONS["bottom-center"];
+  const enterClass = ENTER_ANIM[pos] ?? "ov-enter-up";
 
   const [creatorAddress, setCreatorAddress] = useState<Address | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -102,20 +128,13 @@ export function OverlayPage() {
   const lastBlockRef = useRef<bigint>(0n);
   const busyRef = useRef(false);
 
-  // Transparent body for OBS compositing
   useEffect(() => {
     document.body.style.background = "transparent";
-    return () => {
-      document.body.style.background = "";
-    };
+    return () => { document.body.style.background = ""; };
   }, []);
 
-  // Load creator; if ?test=1 skip and enqueue a fake alert instead
   useEffect(() => {
-    if (isTest) {
-      setQueue([TEST_ALERT]);
-      return;
-    }
+    if (isTest) {setQueue([TEST_ALERT]); return;}
     async function load() {
       try {
         const result = await publicClient.readContract({
@@ -128,14 +147,11 @@ export function OverlayPage() {
           setCreatorAddress(result[0]);
           lastBlockRef.current = await publicClient.getBlockNumber();
         }
-      } catch {
-        // unknown handle — overlay idles silently
-      }
+      } catch { /* unknown handle */ }
     }
     void load();
   }, [normalized, isTest]);
 
-  // Poll for new TipReceipt events
   const poll = useCallback(async () => {
     if (!creatorAddress) return;
     try {
@@ -143,33 +159,24 @@ export function OverlayPage() {
       if (latest <= lastBlockRef.current) return;
       const fromBlock = lastBlockRef.current + 1n;
       lastBlockRef.current = latest;
-
       const logs = await publicClient.getLogs({
         address: REGISTRY.address,
-        event: SAWER_REGISTRY_ABI.find(
-          (x) => x.type === "event" && x.name === "TipReceipt",
-        ) as (typeof SAWER_REGISTRY_ABI)[number] & {type: "event"},
+        event: SAWER_REGISTRY_ABI.find((x) => x.type === "event" && x.name === "TipReceipt") as (typeof SAWER_REGISTRY_ABI)[number] & {type: "event"},
         args: {creator: creatorAddress},
         fromBlock,
         toBlock: latest,
       });
-
       if (!logs.length) return;
-
       setQueue((q) => [
         ...q,
         ...logs.map((log) => ({
           id: `${log.transactionHash ?? ""}-${String(log.logIndex ?? Math.random())}`,
           amount: (log.args as {amount?: bigint}).amount ?? 0n,
-          token:
-            (log.args as {token?: Address}).token ??
-            ("0x0000000000000000000000000000000000000000" as Address),
+          token: (log.args as {token?: Address}).token ?? ("0x0000000000000000000000000000000000000000" as Address),
           message: (log.args as {message?: string}).message ?? "",
         })),
       ]);
-    } catch {
-      // network blip — retry next interval
-    }
+    } catch { /* retry */ }
   }, [creatorAddress]);
 
   useEffect(() => {
@@ -178,39 +185,36 @@ export function OverlayPage() {
     return () => clearInterval(id);
   }, [creatorAddress, poll]);
 
-  // Phase-transition state machine
+  // Phase machine
   useEffect(() => {
     if (phase === "in") {
       const t = setTimeout(() => setPhase("hold"), ENTRANCE_MS);
       return () => clearTimeout(t);
     }
     if (phase === "hold") {
-      const t = setTimeout(() => setPhase("out"), DISPLAY_MS);
+      const t = setTimeout(() => setPhase("out"), displayMs);
       return () => clearTimeout(t);
     }
     if (phase === "out") {
-      const t = setTimeout(() => {
-        setCurrent(null);
-        busyRef.current = false;
-      }, EXIT_MS);
+      const t = setTimeout(() => { setCurrent(null); busyRef.current = false; }, EXIT_MS);
       return () => clearTimeout(t);
     }
-  }, [phase]);
+  }, [phase, displayMs]);
 
-  // Progress bar depletion during hold
+  // Progress bar
   useEffect(() => {
     if (phase !== "hold") return;
     setProgress(100);
     const start = Date.now();
     const id = setInterval(() => {
-      const pct = Math.max(0, 100 - ((Date.now() - start) / DISPLAY_MS) * 100);
+      const pct = Math.max(0, 100 - ((Date.now() - start) / displayMs) * 100);
       setProgress(pct);
       if (pct <= 0) clearInterval(id);
     }, 50);
     return () => clearInterval(id);
-  }, [phase]);
+  }, [phase, displayMs]);
 
-  // Dequeue next alert when idle
+  // Dequeue
   useEffect(() => {
     if (busyRef.current || current !== null || queue.length === 0) return;
     busyRef.current = true;
@@ -222,40 +226,39 @@ export function OverlayPage() {
     if (soundEnabled) playAlert();
   }, [queue, current, soundEnabled]);
 
+  const reaction = current ? parseReaction(current.message) : null;
+
   return (
     <div className="ov-root">
-      {/* Sound unlock — click once during OBS setup */}
       {!soundEnabled && (
-        <button
-          className="ov-sound-btn"
-          onClick={() => {
-            unlockAudio();
-            setSoundEnabled(true);
-          }}
-        >
+        <button className="ov-sound-btn" onClick={() => { unlockAudio(); setSoundEnabled(true); }}>
           🔔 Enable sound
         </button>
       )}
 
       {current && (
-        <div className={`ov-alert ov-alert--${phase}`}>
-          {/* Left icon column */}
+        <div
+          className={`ov-alert ov-alert--${phase} ov-alert--${enterClass}`}
+          style={{
+            ...posStyle,
+            borderColor: accent,
+            boxShadow: `0 0 0 1px ${accent}22, 0 0 48px ${accent}38, 0 20px 48px rgba(0,0,0,0.7)`,
+          }}
+        >
           <div className="ov-icon-col">
-            <CeloMark />
-          </div>
-
-          {/* Right content column */}
-          <div className="ov-content">
-            <span className="ov-eyebrow">New tip!</span>
-            <p className="ov-amount">{formatAmount(current.amount, current.token)}</p>
-            {current.message && (
-              <p className="ov-message">"{current.message}"</p>
+            {reaction?.emoji ? (
+              <span className="ov-reaction-emoji">{reaction.emoji}</span>
+            ) : (
+              <CeloMark accent={accent} />
             )}
           </div>
-
-          {/* Bottom progress bar */}
+          <div className="ov-content">
+            <span className="ov-eyebrow" style={{color: accent}}>New tip!</span>
+            <p className="ov-amount">{formatAmount(current.amount, current.token)}</p>
+            {reaction?.text && <p className="ov-message">"{reaction.text}"</p>}
+          </div>
           <div className="ov-progress-track">
-            <div className="ov-progress-fill" style={{width: `${progress}%`}} />
+            <div className="ov-progress-fill" style={{width: `${progress}%`, background: `linear-gradient(90deg, ${accent}, ${accent}cc)`}} />
           </div>
         </div>
       )}
@@ -263,24 +266,12 @@ export function OverlayPage() {
   );
 }
 
-// Inline SVG — CELO brand mark (three-circle pattern)
-function CeloMark() {
+function CeloMark({accent}: {accent: string}) {
   return (
-    <svg
-      width="52"
-      height="52"
-      viewBox="0 0 52 52"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      {/* outer green disc */}
-      <circle cx="26" cy="26" r="26" fill="#35d07f" />
-      {/* centre ring */}
+    <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <circle cx="26" cy="26" r="26" fill={accent} />
       <circle cx="26" cy="26" r="14" stroke="#ffffff" strokeWidth="4" fill="none" />
-      {/* top dot */}
       <circle cx="26" cy="13" r="5" fill="#ffffff" />
-      {/* bottom-right dot */}
       <circle cx="36.6" cy="33" r="5" fill="#ffffff" />
     </svg>
   );
