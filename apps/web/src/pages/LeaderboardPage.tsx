@@ -148,7 +148,22 @@ export function LeaderboardPage() {
       <h1 className="page-title">Leaderboard</h1>
       <p className="lede">Top creators and biggest tips on SawerLink.</p>
 
-      {loading && <p className="hint center">Loading…</p>}
+      {loading && (
+        <div className="lb-grid">
+          {[0, 1].map((p) => (
+            <div key={p} className="lb-panel">
+              <span className="skeleton skeleton-line" style={{width: "55%"}} />
+              {Array.from({length: 6}).map((_, i) => (
+                <div key={i} style={{display: "flex", gap: 10, alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f0f5f0"}}>
+                  <span className="skeleton" style={{width: 24, height: 14, flexShrink: 0}} />
+                  <span className="skeleton skeleton-line" style={{flex: 1}} />
+                  <span className="skeleton" style={{width: 72, height: 14, flexShrink: 0}} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
 
       {!loading && !error && (

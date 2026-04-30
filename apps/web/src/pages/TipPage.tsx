@@ -166,7 +166,18 @@ export function TipPage() {
     }
   }
 
-  if (lookup.kind === "loading") return <main className="shell narrow"><p className="status">Looking up @{normalized}…</p></main>;
+  if (lookup.kind === "loading") return (
+    <main className="shell narrow">
+      <div className="skeleton-creator-header">
+        <span className="skeleton skeleton-avatar" style={{width: 64, height: 64}} />
+        <span className="skeleton skeleton-line skeleton-line--sm" style={{width: "30%"}} />
+        <span className="skeleton skeleton-line skeleton-line--xl" style={{width: "60%"}} />
+        <span className="skeleton skeleton-line" style={{width: "80%"}} />
+        <span className="skeleton skeleton-line skeleton-line--sm" style={{width: "50%"}} />
+      </div>
+      <span className="skeleton skeleton-card" />
+    </main>
+  );
   if (lookup.kind === "error") return <main className="shell narrow"><p className="error">{lookup.message}</p><Link to="/">← Back home</Link></main>;
   if (lookup.kind === "not-found") return (
     <main className="shell narrow">

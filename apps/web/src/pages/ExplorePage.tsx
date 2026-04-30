@@ -63,7 +63,20 @@ export function ExplorePage() {
       <h1 className="page-title">Explore creators</h1>
       <p className="lede">Everyone on SawerLink on {ACTIVE_CHAIN.name}.</p>
 
-      {loading && <p className="hint center">Loading creators…</p>}
+      {loading && (
+        <div className="skeleton-grid">
+          {Array.from({length: 12}).map((_, i) => (
+            <div key={i} className="skeleton-creator-card">
+              <span className="skeleton skeleton-avatar" style={{width: 52, height: 52, flexShrink: 0}} />
+              <div className="skeleton-creator-card-body">
+                <span className="skeleton skeleton-line skeleton-line--lg" style={{width: "70%"}} />
+                <span className="skeleton skeleton-line skeleton-line--sm" style={{width: "45%"}} />
+                <span className="skeleton skeleton-line skeleton-line--sm" style={{width: "90%"}} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
 
       {!loading && !error && creators.length === 0 && (

@@ -886,6 +886,68 @@ a:hover {
   font-size: 0.9rem;
 }
 
+/* ─── Skeleton shimmer ───────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e6ede7 25%, #f2f7f2 50%, #e6ede7 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+  border-radius: 6px;
+  display: block;
+}
+
+.skeleton-avatar {
+  border-radius: 50%;
+}
+
+.skeleton-line {
+  height: 14px;
+  margin-bottom: 8px;
+}
+
+.skeleton-line--sm  { height: 11px; }
+.skeleton-line--lg  { height: 20px; }
+.skeleton-line--xl  { height: 28px; }
+
+.skeleton-card {
+  height: 80px;
+  border-radius: 10px;
+}
+
+/* Tip page creator header skeleton */
+.skeleton-creator-header {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+/* Explore grid skeleton */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.skeleton-creator-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e6ede7;
+  border-radius: 10px;
+}
+
+.skeleton-creator-card-body {
+  flex: 1;
+  display: grid;
+  gap: 8px;
+}
+
 /* ─── Nav bar ────────────────────────────────────────────────────── */
 .navbar {
   position: sticky;
