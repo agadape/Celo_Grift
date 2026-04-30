@@ -268,6 +268,11 @@ textarea:focus {
   border-color: #35d07f;
 }
 
+.input-error {
+  border-color: #e05252 !important;
+  outline-color: #e05252 !important;
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -620,6 +625,31 @@ a:hover {
 
 .ov-alert--hold {
   opacity: 1;
+}
+
+/* Alert with media: add a row above the icon/content */
+.ov-alert--media {
+  grid-template-rows: auto 1fr 4px;
+}
+
+/* Media panel — spans full width above tip info */
+.ov-media {
+  grid-column: 1 / -1;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 220px;
+  overflow: hidden;
+  border-radius: 14px 14px 0 0;
+  background: #000;
+}
+
+.ov-media iframe,
+.ov-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: none;
+  display: block;
 }
 
 /* ── Enter / leave by direction ── */

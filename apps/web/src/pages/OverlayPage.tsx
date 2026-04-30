@@ -5,6 +5,7 @@ import type {Address} from "viem";
 import {publicClient} from "../lib/publicClient";
 import {SAWER_REGISTRY_ABI, getActiveRegistry, handleHash} from "../lib/contract";
 import {CELO_TOKENS} from "../lib/tokens";
+import {parseMedia, getYoutubeId, getMediaKind} from "../lib/media";
 
 const REGISTRY = getActiveRegistry();
 const POLL_MS = 5_000;
@@ -226,7 +227,12 @@ export function OverlayPage() {
     if (soundEnabled) playAlert();
   }, [queue, current, soundEnabled]);
 
-  const reaction = current ? parseReaction(current.message) : null;
+  const parsed = current ? parseMedia(current.message) : null;
+  const reaction = parsed ? parseReaction(parsed.text) : null;
+  const mediaUrl = parsed?.mediaUrl ?? "";
+  const mediaKind = getMediaKind(mediaUrl);
+  const youtubeId = mediaKind === "youtube" ? getYoutubeId(mediaUrl) : null;
+  const hasMedia = !!(mediaKind && (youtubeId || mediaKind === "image"));
 
   return (
     <div className="ov-root">
@@ -238,13 +244,29 @@ export function OverlayPage() {
 
       {current && (
         <div
-          className={`ov-alert ov-alert--${phase} ov-alert--${enterClass}`}
+          className={`ov-alert ov-alert--${phase} ov-alert--${enterClass}${hasMedia ? " ov-alert--media" : ""}`}
           style={{
             ...posStyle,
             borderColor: accent,
             boxShadow: `0 0 0 1px ${accent}22, 0 0 48px ${accent}38, 0 20px 48px rgba(0,0,0,0.7)`,
           }}
         >
+          {/* Media panel — YouTube iframe or image/GIF */}
+          {hasMedia && (
+            <div className="ov-media">
+              {youtubeId ? (
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&controls=0&rel=0&modestbranding=1`}
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen={false}
+                  title="tip media"
+                />
+              ) : (
+                <img src={mediaUrl} alt="" />
+              )}
+            </div>
+          )}
+
           <div className="ov-icon-col">
             {reaction?.emoji ? (
               <span className="ov-reaction-emoji">{reaction.emoji}</span>
