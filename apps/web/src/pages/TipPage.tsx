@@ -31,6 +31,12 @@ type TipStatus =
   | {kind: "success"; transferTx: `0x${string}`; receiptTx: `0x${string}`}
   | {kind: "error"; message: string};
 
+type SubStatus =
+  | {kind: "idle"}
+  | {kind: "sending"}
+  | {kind: "success"; txHash: `0x${string}`}
+  | {kind: "error"; message: string};
+
 function getGoalTokenAddress(symbol: string): string {
   if (symbol === "CELO") return ZERO_ADDRESS;
   const t = CELO_TOKENS.find((x) => x.symbol === symbol && x.address !== "native");
@@ -52,6 +58,9 @@ export function TipPage() {
   const [showQR, setShowQR] = useState(false);
   const [tipStatus, setTipStatus] = useState<TipStatus>({kind: "idle"});
   const [loadedTips, setLoadedTips] = useState<TipEntry[] | null>(null);
+  const [subConfig, setSubConfig] = useState<{enabled: boolean; priceWei: bigint} | null>(null);
+  const [subExpiry, setSubExpiry] = useState<bigint>(0n);
+  const [subStatus, setSubStatus] = useState<SubStatus>({kind: "idle"});
   const hasInjectedWallet = typeof window !== "undefined" && Boolean(window.ethereum);
 
   const selectedToken = CELO_TOKENS[selectedTokenIdx] ?? CELO_TOKENS[0];
@@ -69,6 +78,17 @@ export function TipPage() {
       const [payoutAddress, fetchedHandle, metadataURI, exists] = result;
       if (!exists) {setLookup({kind: "not-found"}); return;}
       setLookup({kind: "found", creator: {payoutAddress, handle: fetchedHandle, metadataURI}});
+
+      // Load subscription config
+      try {
+        const cfg = await publicClient.readContract({
+          address: REGISTRY.address,
+          abi: SAWER_REGISTRY_ABI,
+          functionName: "subConfigs",
+          args: [handleHash(normalized)],
+        });
+        setSubConfig({enabled: cfg[0], priceWei: cfg[1]});
+      } catch { /* subscription not configured on this contract version */ }
     } catch (err) {
       setLookup({kind: "error", message: err instanceof Error ? err.message : "Failed to load creator."});
     }
@@ -97,8 +117,42 @@ export function TipPage() {
     try {
       const wallet = await connectWallet();
       setSupporterAddress(wallet.address);
+      await checkSubExpiry(wallet.address);
     } catch (err) {
       setTipStatus({kind: "error", message: err instanceof Error ? err.message : "Could not connect."});
+    }
+  }
+
+  async function checkSubExpiry(addr: Address) {
+    try {
+      const expiry = await publicClient.readContract({
+        address: REGISTRY.address,
+        abi: SAWER_REGISTRY_ABI,
+        functionName: "subExpiry",
+        args: [handleHash(normalized), addr],
+      });
+      setSubExpiry(expiry);
+    } catch { /* ignore */ }
+  }
+
+  async function handleSubscribe() {
+    if (lookup.kind !== "found" || !supporterAddress || !subConfig) return;
+    try {
+      const walletClient = getWalletClient();
+      setSubStatus({kind: "sending"});
+      const txHash = await walletClient.writeContract({
+        account: supporterAddress,
+        address: REGISTRY.address,
+        abi: SAWER_REGISTRY_ABI,
+        functionName: "subscribe",
+        args: [lookup.creator.handle],
+        value: subConfig.priceWei,
+      });
+      await publicClient.waitForTransactionReceipt({hash: txHash});
+      await checkSubExpiry(supporterAddress);
+      setSubStatus({kind: "success", txHash});
+    } catch (err) {
+      setSubStatus({kind: "error", message: err instanceof Error ? err.message : "Subscribe failed."});
     }
   }
 
@@ -118,7 +172,9 @@ export function TipPage() {
       return;
     }
 
-    const fullMessage = buildMessage(message, reaction, mediaUrl);
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const isSubscriber = subExpiry > now;
+    const fullMessage = buildMessage(message, isSubscriber ? (reaction || "👑") : reaction, mediaUrl);
 
     try {
       const walletClient = getWalletClient();
@@ -286,6 +342,46 @@ export function TipPage() {
           {goalPct >= 100 && <p className="hint tip-goal-complete">🎉 Goal reached!</p>}
         </div>
       )}
+
+      {/* Subscription panel */}
+      {subConfig?.enabled && (() => {
+        const now = BigInt(Math.floor(Date.now() / 1000));
+        const isActive = subExpiry > now;
+        const expiryDate = isActive ? new Date(Number(subExpiry) * 1000).toLocaleDateString() : null;
+        const celoPrice = parseFloat(formatUnits(subConfig.priceWei, 18)).toFixed(2);
+        return (
+          <div className="sub-panel">
+            <div className="sub-panel-header">
+              <span className="sub-badge">👑 Subscriber</span>
+              <span className="sub-price">{celoPrice} CELO / month</span>
+            </div>
+            {isActive ? (
+              <div className="sub-active">
+                <p className="sub-active-text">✓ You're subscribed — active until {expiryDate}</p>
+                <p className="hint">Subscribing again extends your time by 30 days.</p>
+              </div>
+            ) : (
+              <p className="hint">Subscribe to support {profile?.name || `@${creator.handle}`} monthly and get the 👑 badge on your tips.</p>
+            )}
+            {supporterAddress ? (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleSubscribe}
+                disabled={subStatus.kind === "sending"}
+              >
+                {subStatus.kind === "sending" ? "Subscribing…" : isActive ? `Extend subscription · ${celoPrice} CELO` : `Subscribe · ${celoPrice} CELO / month`}
+              </button>
+            ) : (
+              <button type="button" onClick={handleConnect}>Connect wallet to subscribe</button>
+            )}
+            {subStatus.kind === "success" && (
+              <p className="hint avail-hint-ok">✓ Subscribed! <a href={REGISTRY.blockExplorerTx(subStatus.txHash)} target="_blank" rel="noreferrer">View tx</a></p>
+            )}
+            {subStatus.kind === "error" && <p className="error">{subStatus.message}</p>}
+          </div>
+        );
+      })()}
 
       <form className="creator-panel" onSubmit={handleTip}>
         {!supporterAddress ? (

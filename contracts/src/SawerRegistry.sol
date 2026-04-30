@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 contract SawerRegistry {
+    // ─── Creator ────────────────────────────────────────────────────────────
     struct Creator {
         address payoutAddress;
         string handle;
@@ -80,5 +81,72 @@ contract SawerRegistry {
             message,
             routeId
         );
+    }
+
+    // ─── Subscriptions ──────────────────────────────────────────────────────
+    struct SubConfig {
+        bool enabled;
+        uint256 priceWei; // monthly price in native CELO
+    }
+
+    // handleHash => subscriber address => expiry timestamp
+    mapping(bytes32 => mapping(address => uint256)) public subExpiry;
+    mapping(bytes32 => SubConfig) public subConfigs;
+
+    event SubConfigSet(
+        bytes32 indexed handleHash,
+        bool enabled,
+        uint256 priceWei
+    );
+
+    event Subscribed(
+        address indexed subscriber,
+        address indexed creator,
+        bytes32 indexed handleHash,
+        uint256 expiresAt
+    );
+
+    function setSubConfig(
+        string calldata handle,
+        bool enabled,
+        uint256 priceWei
+    ) external {
+        bytes32 hash = keccak256(bytes(handle));
+        Creator storage creator = creatorsByHandle[hash];
+        require(creator.exists, "UNKNOWN_CREATOR");
+        require(creator.payoutAddress == msg.sender, "NOT_CREATOR");
+
+        subConfigs[hash] = SubConfig(enabled, priceWei);
+        emit SubConfigSet(hash, enabled, priceWei);
+    }
+
+    function subscribe(string calldata handle) external payable {
+        bytes32 hash = keccak256(bytes(handle));
+        Creator memory creator = creatorsByHandle[hash];
+        require(creator.exists, "UNKNOWN_CREATOR");
+        SubConfig memory cfg = subConfigs[hash];
+        require(cfg.enabled, "SUBS_DISABLED");
+        require(msg.value >= cfg.priceWei, "INSUFFICIENT");
+
+        // Stack time if already subscribed
+        uint256 base = subExpiry[hash][msg.sender] > block.timestamp
+            ? subExpiry[hash][msg.sender]
+            : block.timestamp;
+        uint256 newExpiry = base + 30 days;
+        subExpiry[hash][msg.sender] = newExpiry;
+
+        // Forward payment directly to creator (checks-effects-interactions)
+        (bool ok,) = creator.payoutAddress.call{value: msg.value}("");
+        require(ok, "TRANSFER_FAILED");
+
+        emit Subscribed(msg.sender, creator.payoutAddress, hash, newExpiry);
+    }
+
+    function isSubscriber(bytes32 handleHash, address viewer)
+        external
+        view
+        returns (bool)
+    {
+        return subExpiry[handleHash][viewer] > block.timestamp;
     }
 }

@@ -39,6 +39,8 @@ export function EditProfilePage() {
   const [goalLabel, setGoalLabel] = useState("");
   const [goalTarget, setGoalTarget] = useState("");
   const [goalToken, setGoalToken] = useState("CELO");
+  const [subEnabled, setSubEnabled] = useState(false);
+  const [subPrice, setSubPrice] = useState("1");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({kind: "idle"});
 
   const loadCreator = useCallback(async () => {
@@ -64,6 +66,21 @@ export function EditProfilePage() {
         setGoalToken(profile.goal.token);
       }
       setPageState({kind: "ready", creatorAddress: payoutAddress});
+
+      // Load existing subscription config (graceful — new contract feature)
+      try {
+        const cfg = await publicClient.readContract({
+          address: REGISTRY.address,
+          abi: SAWER_REGISTRY_ABI,
+          functionName: "subConfigs",
+          args: [handleHash(normalized)],
+        });
+        setSubEnabled(cfg[0]);
+        if (cfg[1] > 0n) {
+          const {formatUnits} = await import("viem");
+          setSubPrice(parseFloat(formatUnits(cfg[1], 18)).toString());
+        }
+      } catch { /* subscription not on this contract version */ }
     } catch (err) {
       setPageState({kind: "error", message: err instanceof Error ? err.message : "Failed to load creator."});
     }
@@ -117,8 +134,11 @@ export function EditProfilePage() {
     });
 
     try {
+      const {parseUnits} = await import("viem");
       const walletClient = getWalletClient();
       setSaveStatus({kind: "saving"});
+
+      // Save metadata
       const txHash = await walletClient.writeContract({
         account: walletAddress,
         address: REGISTRY.address,
@@ -128,6 +148,21 @@ export function EditProfilePage() {
       });
       setSaveStatus({kind: "saving", txHash});
       await publicClient.waitForTransactionReceipt({hash: txHash});
+
+      // Save subscription config (separate tx — graceful if contract doesn't support it)
+      try {
+        const priceWei = subEnabled && subPrice.trim()
+          ? parseUnits(subPrice.trim(), 18)
+          : 0n;
+        const subTx = await walletClient.writeContract({
+          account: walletAddress,
+          address: REGISTRY.address,
+          abi: SAWER_REGISTRY_ABI,
+          functionName: "setSubConfig",
+          args: [normalized, subEnabled, priceWei],
+        });
+        await publicClient.waitForTransactionReceipt({hash: subTx});
+      } catch { /* setSubConfig not available on older contract */ }
       setSaveStatus({kind: "success", txHash});
       setTimeout(() => navigate(`/s/${normalized}`), 2000);
     } catch (err) {
@@ -251,6 +286,35 @@ export function EditProfilePage() {
                   </select>
                 </div>
                 <p className="hint">Progress bar appears on your tip page once tips start arriving.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Monthly Subscription */}
+          <div className="sub-config-section">
+            <div className="links-header">
+              <span className="label">Monthly subscription <span className="opt">(optional)</span></span>
+              <label className="goal-toggle">
+                <input type="checkbox" checked={subEnabled} onChange={(e) => setSubEnabled(e.target.checked)} disabled={isSaving} />
+                <span>{subEnabled ? "Enabled" : "Disabled"}</span>
+              </label>
+            </div>
+            {subEnabled && (
+              <div className="sub-config-editor">
+                <div className="goal-amount-row">
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    placeholder="Monthly price"
+                    value={subPrice}
+                    onChange={(e) => setSubPrice(e.target.value)}
+                    disabled={isSaving}
+                    className="goal-amount-input"
+                  />
+                  <span className="sub-token-label">CELO / month</span>
+                </div>
+                <p className="hint">Subscribers pay in native CELO. They get a subscriber badge on their tips and any perks you offer.</p>
               </div>
             )}
           </div>

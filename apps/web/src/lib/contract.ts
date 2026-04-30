@@ -81,6 +81,76 @@ export const SAWER_REGISTRY_ABI = [
     ],
     anonymous: false,
   },
+  // ── Subscriptions ──
+  {
+    type: "function",
+    name: "setSubConfig",
+    inputs: [
+      {name: "handle", type: "string"},
+      {name: "enabled", type: "bool"},
+      {name: "priceWei", type: "uint256"},
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "subscribe",
+    inputs: [{name: "handle", type: "string"}],
+    outputs: [],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
+    name: "isSubscriber",
+    inputs: [
+      {name: "handleHash", type: "bytes32"},
+      {name: "viewer", type: "address"},
+    ],
+    outputs: [{name: "", type: "bool"}],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "subConfigs",
+    inputs: [{name: "", type: "bytes32"}],
+    outputs: [
+      {name: "enabled", type: "bool"},
+      {name: "priceWei", type: "uint256"},
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "subExpiry",
+    inputs: [
+      {name: "", type: "bytes32"},
+      {name: "", type: "address"},
+    ],
+    outputs: [{name: "", type: "uint256"}],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "Subscribed",
+    inputs: [
+      {name: "subscriber", type: "address", indexed: true},
+      {name: "creator", type: "address", indexed: true},
+      {name: "handleHash", type: "bytes32", indexed: true},
+      {name: "expiresAt", type: "uint256", indexed: false},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "SubConfigSet",
+    inputs: [
+      {name: "handleHash", type: "bytes32", indexed: true},
+      {name: "enabled", type: "bool", indexed: false},
+      {name: "priceWei", type: "uint256", indexed: false},
+    ],
+    anonymous: false,
+  },
 ] as const;
 
 type Address = `0x${string}`;

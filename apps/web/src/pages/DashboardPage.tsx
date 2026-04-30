@@ -1,6 +1,6 @@
 import {useEffect, useState} from "react";
 import {Link} from "react-router-dom";
-import {type Address} from "viem";
+import {type Address, formatUnits} from "viem";
 import {connectWallet} from "../lib/wallet";
 import {publicClient, ACTIVE_CHAIN} from "../lib/publicClient";
 import {SAWER_REGISTRY_ABI, getActiveRegistry, handleHash} from "../lib/contract";
@@ -24,10 +24,13 @@ type DashState =
   | {kind: "not-registered"}
   | {kind: "error"; message: string};
 
+type SubStats = {enabled: boolean; priceWei: bigint; activeCount: number};
+
 export function DashboardPage() {
   const [address, setAddress] = useState<Address | null>(null);
   const [dashState, setDashState] = useState<DashState>({kind: "idle"});
   const [copied, setCopied] = useState<string | null>(null);
+  const [subStats, setSubStats] = useState<SubStats | null>(null);
 
   // Overlay config
   const [ovPos, setOvPos] = useState("bottom-center");
@@ -74,6 +77,39 @@ export function DashboardPage() {
       if (!result[3]) {setDashState({kind: "not-registered"}); return;}
 
       setDashState({kind: "found", handle: registeredHandle, payoutAddress: result[0], metadataURI: result[2]});
+
+      // Load sub stats gracefully
+      try {
+        const hHash = handleHash(registeredHandle);
+        const cfg = await publicClient.readContract({
+          address: REGISTRY.address,
+          abi: SAWER_REGISTRY_ABI,
+          functionName: "subConfigs",
+          args: [hHash],
+        });
+        const subscribedEvent = SAWER_REGISTRY_ABI.find((x) => x.type === "event" && x.name === "Subscribed") as (typeof SAWER_REGISTRY_ABI)[number] & {type: "event"};
+        const subLogs = await publicClient.getLogs({
+          address: REGISTRY.address,
+          event: subscribedEvent,
+          args: {handleHash: hHash},
+          fromBlock: REGISTRY.deployBlock,
+          toBlock: "latest",
+        });
+        const uniqueSubscribers = [...new Set(subLogs.map((l) => (l.args as {subscriber?: Address}).subscriber).filter(Boolean) as Address[])];
+        const now = BigInt(Math.floor(Date.now() / 1000));
+        const expiries = await Promise.all(
+          uniqueSubscribers.map((sub) =>
+            publicClient.readContract({
+              address: REGISTRY.address,
+              abi: SAWER_REGISTRY_ABI,
+              functionName: "subExpiry",
+              args: [hHash, sub],
+            })
+          )
+        );
+        const activeCount = expiries.filter((exp) => exp > now).length;
+        setSubStats({enabled: cfg[0], priceWei: cfg[1], activeCount});
+      } catch { /* subscription not on this contract version */ }
     } catch (err) {
       setDashState({kind: "error", message: err instanceof Error ? err.message : "Failed to load dashboard."});
     }
@@ -127,6 +163,31 @@ export function DashboardPage() {
               <h2 className="dash-name">{displayName}</h2>
               <p className="hint"><code>@{dashState.handle}</code> · {ACTIVE_CHAIN.name} · <code>{shortAddr(dashState.payoutAddress)}</code></p>
             </header>
+
+            {/* Subscription stats */}
+            {subStats && (
+              <div className="creator-panel" style={{display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "16px", alignItems: "center"}}>
+                <div>
+                  <span className="label" style={{display: "block", marginBottom: 4}}>Subscriptions</span>
+                  <span style={{fontSize: 13, color: subStats.enabled ? "#2e7d32" : "#666"}}>
+                    {subStats.enabled ? "Enabled" : "Disabled"}
+                    {subStats.enabled && subStats.priceWei > 0n && (
+                      <> · {parseFloat(formatUnits(subStats.priceWei, 18)).toLocaleString()} CELO / month</>
+                    )}
+                  </span>
+                </div>
+                <div>
+                  <span className="label" style={{display: "block", marginBottom: 4}}>Active subscribers</span>
+                  <span className="sub-count-badge">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    {subStats.activeCount}
+                  </span>
+                </div>
+                <div style={{marginLeft: "auto"}}>
+                  <Link to={`/s/${dashState.handle}/edit`} className="btn-secondary btn-sm">Configure</Link>
+                </div>
+              </div>
+            )}
 
             {/* Tip link */}
             <div className="creator-panel">
