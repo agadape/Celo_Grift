@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+interface IERC20 {
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
+}
+
 contract SawerRegistry {
     // ─── Creator ────────────────────────────────────────────────────────────
     struct Creator {
@@ -64,6 +68,35 @@ contract SawerRegistry {
         emit MetadataUpdated(msg.sender, hash, newMetadataURI);
     }
 
+    // Single-tx tip: transfers funds + emits receipt atomically.
+    // token == address(0) → native CELO (send msg.value); otherwise ERC-20 transferFrom.
+    function tip(
+        string calldata handle,
+        address token,
+        uint256 amount,
+        string calldata message,
+        bytes32 routeId
+    ) external payable {
+        bytes32 hash = keccak256(bytes(handle));
+        Creator memory creator = creatorsByHandle[hash];
+        require(creator.exists, "UNKNOWN_CREATOR");
+
+        uint256 actualAmount;
+        if (token == address(0)) {
+            require(msg.value > 0, "NO_VALUE");
+            actualAmount = msg.value;
+            (bool ok,) = creator.payoutAddress.call{value: msg.value}("");
+            require(ok, "TRANSFER_FAILED");
+        } else {
+            require(msg.value == 0, "UNEXPECTED_VALUE");
+            actualAmount = amount;
+            require(IERC20(token).transferFrom(msg.sender, creator.payoutAddress, amount), "TRANSFER_FAILED");
+        }
+
+        emit TipReceipt(creator.payoutAddress, token, actualAmount, message, routeId);
+    }
+
+    // Kept for backwards-compatibility with older frontends.
     function recordTip(
         string calldata handle,
         address token,

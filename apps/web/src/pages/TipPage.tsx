@@ -27,8 +27,8 @@ type LookupState =
   | {kind: "error"; message: string};
 type TipStatus =
   | {kind: "idle"}
-  | {kind: "sending"; step: "transfer" | "receipt"; txHash?: `0x${string}`}
-  | {kind: "success"; transferTx: `0x${string}`; receiptTx: `0x${string}`}
+  | {kind: "sending"; step: "approve" | "tip"}
+  | {kind: "success"; txHash: `0x${string}`}
   | {kind: "error"; message: string};
 
 type SubStatus =
@@ -174,49 +174,62 @@ export function TipPage() {
 
     const now = BigInt(Math.floor(Date.now() / 1000));
     const isSubscriber = subExpiry > now;
-    const fullMessage = buildMessage(message, isSubscriber ? (reaction || "👑") : reaction, mediaUrl);
+    const fullMessage = buildMessage(message, isSubscriber ? (reaction || "👑") : reaction, mediaUrl).slice(0, 400);
 
     try {
       const walletClient = getWalletClient();
       const ethereum = window.ethereum;
       if (!ethereum) throw new Error("No wallet found.");
 
-      setTipStatus({kind: "sending", step: "transfer"});
-      let transferTx: `0x${string}`;
-
       if (selectedToken.address === "native") {
-        transferTx = await walletClient.sendTransaction({
+        // Native CELO: single tx — transfer + receipt in one call
+        setTipStatus({kind: "sending", step: "tip"});
+        const txHash = await walletClient.writeContract({
           account: supporterAddress,
-          to: lookup.creator.payoutAddress,
+          address: REGISTRY.address,
+          abi: SAWER_REGISTRY_ABI,
+          functionName: "tip",
+          args: [lookup.creator.handle, ZERO_ADDRESS, amountParsed, fullMessage, ZERO_BYTES32],
           value: amountParsed,
         });
+        await publicClient.waitForTransactionReceipt({hash: txHash});
+        setTipStatus({kind: "success", txHash});
       } else {
-        const data = encodeFunctionData({
+        // ERC-20: approve (if needed) → tip — at most 2 txs, usually 1
+        const tokenAddr = selectedToken.address;
+        const allowance = await publicClient.readContract({
+          address: tokenAddr,
           abi: ERC20_ABI,
-          functionName: "transfer",
-          args: [lookup.creator.payoutAddress, amountParsed],
+          functionName: "allowance",
+          args: [supporterAddress, REGISTRY.address],
         });
-        const txParams: Record<string, unknown> = {from: supporterAddress, to: selectedToken.address, data};
-        if (selectedToken.feeCurrency) txParams.feeCurrency = selectedToken.feeCurrency;
-        transferTx = (await ethereum.request({method: "eth_sendTransaction", params: [txParams]})) as `0x${string}`;
+
+        if (allowance < amountParsed) {
+          setTipStatus({kind: "sending", step: "approve"});
+          const approveData = encodeFunctionData({
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [REGISTRY.address, amountParsed],
+          });
+          const approveTxParams: Record<string, unknown> = {from: supporterAddress, to: tokenAddr, data: approveData};
+          if (selectedToken.feeCurrency) approveTxParams.feeCurrency = selectedToken.feeCurrency;
+          const approveTx = (await ethereum.request({method: "eth_sendTransaction", params: [approveTxParams]})) as `0x${string}`;
+          await publicClient.waitForTransactionReceipt({hash: approveTx});
+        }
+
+        setTipStatus({kind: "sending", step: "tip"});
+        const tipData = encodeFunctionData({
+          abi: SAWER_REGISTRY_ABI,
+          functionName: "tip",
+          args: [lookup.creator.handle, tokenAddr, amountParsed, fullMessage, ZERO_BYTES32],
+        });
+        const tipTxParams: Record<string, unknown> = {from: supporterAddress, to: REGISTRY.address, data: tipData};
+        if (selectedToken.feeCurrency) tipTxParams.feeCurrency = selectedToken.feeCurrency;
+        const txHash = (await ethereum.request({method: "eth_sendTransaction", params: [tipTxParams]})) as `0x${string}`;
+        await publicClient.waitForTransactionReceipt({hash: txHash});
+        setTipStatus({kind: "success", txHash});
       }
 
-      setTipStatus({kind: "sending", step: "transfer", txHash: transferTx});
-      await publicClient.waitForTransactionReceipt({hash: transferTx});
-
-      setTipStatus({kind: "sending", step: "receipt"});
-      const tokenAddress: Address = selectedToken.address === "native" ? ZERO_ADDRESS : selectedToken.address;
-
-      const receiptTx = await walletClient.writeContract({
-        account: supporterAddress,
-        address: REGISTRY.address,
-        abi: SAWER_REGISTRY_ABI,
-        functionName: "recordTip",
-        args: [lookup.creator.handle, tokenAddress, amountParsed, fullMessage.slice(0, 400), ZERO_BYTES32],
-      });
-      await publicClient.waitForTransactionReceipt({hash: receiptTx});
-
-      setTipStatus({kind: "success", transferTx, receiptTx});
       setMessage("");
       setReaction("");
       setMediaUrl("");
@@ -510,25 +523,23 @@ export function TipPage() {
 
             <button type="submit" disabled={tipStatus.kind === "sending" || tipStatus.kind === "success"}>
               {tipStatus.kind === "sending"
-                ? tipStatus.step === "transfer" ? `Sending ${selectedToken.symbol}…` : "Logging receipt…"
+                ? tipStatus.step === "approve" ? `Approving ${selectedToken.symbol}…` : "Sending tip…"
                 : tipStatus.kind === "success"
                   ? "✓ Sent"
                   : `Send ${amount} ${selectedToken.symbol}`}
             </button>
 
-            {tipStatus.kind === "sending" && (
-              <p className="hint">
-                Step {tipStatus.step === "transfer" ? "1" : "2"} of 2:{" "}
-                {tipStatus.step === "transfer" ? `transferring ${selectedToken.symbol}` : "logging on-chain receipt"}.
-              </p>
+            {tipStatus.kind === "sending" && tipStatus.step === "approve" && (
+              <p className="hint">Step 1 of 2: approving spend — required once per token.</p>
+            )}
+            {tipStatus.kind === "sending" && tipStatus.step === "tip" && (
+              <p className="hint">Sending tip on-chain…</p>
             )}
 
             {tipStatus.kind === "success" && (
               <div className="success-box">
                 <p><strong>Tip sent!</strong></p>
-                <a href={REGISTRY.blockExplorerTx(tipStatus.transferTx)} target="_blank" rel="noreferrer">View transfer</a>
-                {" · "}
-                <a href={REGISTRY.blockExplorerTx(tipStatus.receiptTx)} target="_blank" rel="noreferrer">View receipt</a>
+                <a href={REGISTRY.blockExplorerTx(tipStatus.txHash)} target="_blank" rel="noreferrer">View on explorer</a>
               </div>
             )}
             {tipStatus.kind === "error" && <p className="error">{tipStatus.message}</p>}

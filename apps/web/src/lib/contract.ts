@@ -37,6 +37,19 @@ export const SAWER_REGISTRY_ABI = [
   },
   {
     type: "function",
+    name: "tip",
+    inputs: [
+      {name: "handle", type: "string"},
+      {name: "token", type: "address"},
+      {name: "amount", type: "uint256"},
+      {name: "message", type: "string"},
+      {name: "routeId", type: "bytes32"},
+    ],
+    outputs: [],
+    stateMutability: "payable",
+  },
+  {
+    type: "function",
     name: "recordTip",
     inputs: [
       {name: "handle", type: "string"},
