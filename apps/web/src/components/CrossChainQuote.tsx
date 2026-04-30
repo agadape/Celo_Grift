@@ -13,6 +13,7 @@ import {SOURCE_CHAIN_TOKENS, isNativeToken} from "../lib/tokens";
 import {getWalletClient} from "../lib/wallet";
 import {publicClient, ACTIVE_CHAIN} from "../lib/publicClient";
 import {SAWER_REGISTRY_ABI, getActiveRegistry} from "../lib/contract";
+import {buildMessage, isValidMediaUrl, mediaHint} from "../lib/media";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 const REACTIONS = ["🔥", "❤️", "💎", "🚀", "👑", "⚡", "🎉", "💯"];
@@ -39,6 +40,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
   const [fromAmount, setFromAmount] = useState("10");
   const [message, setMessage] = useState("");
   const [reaction, setReaction] = useState("");
+  const [mediaUrl, setMediaUrl] = useState("");
   const [quoteState, setQuoteState] = useState<
     {kind: "idle"} | {kind: "loading"} | CrossChainQuoteResult
   >({kind: "idle"});
@@ -137,7 +139,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
       const walletClient = getWalletClient();
       const toAmount = BigInt(step.estimate?.toAmount ?? "0");
 
-      const fullMessage = reaction ? `${reaction} ${message}`.trim() : message;
+      const fullMessage = buildMessage(message, reaction, mediaUrl);
       const receiptTxHash = await walletClient.writeContract({
         account: supporterAddress as Address,
         address: registry.address,
@@ -147,7 +149,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
           creatorHandle,
           ZERO_ADDRESS,
           toAmount,
-          fullMessage.slice(0, 200),
+          fullMessage.slice(0, 400),
           sourceTxHash,
         ],
       });
@@ -156,6 +158,7 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
       setExecState({kind: "done", sourceTxHash, receiptTxHash});
       setMessage("");
       setReaction("");
+      setMediaUrl("");
     } catch (err) {
       setExecState({
         kind: "exec-error",
@@ -269,11 +272,27 @@ export function CrossChainQuote({supporterAddress, creatorAddress, creatorHandle
             <input
               type="text"
               value={message}
-              onChange={(e) => setMessage(e.target.value.slice(0, 200))}
+              onChange={(e) => setMessage(e.target.value.slice(0, mediaUrl ? 120 : 200))}
               placeholder="Thanks for the stream!"
-              maxLength={200}
+              maxLength={mediaUrl ? 120 : 200}
             />
           </label>
+
+          <div>
+            <span className="label">Media <span className="opt">(optional — shows in OBS overlay)</span></span>
+            <input
+              type="url"
+              value={mediaUrl}
+              onChange={(e) => setMediaUrl(e.target.value.slice(0, 180))}
+              placeholder="YouTube link, GIF, or image URL"
+              className={mediaUrl && !isValidMediaUrl(mediaUrl) ? "input-error" : ""}
+            />
+            {mediaUrl && (
+              <p className={`hint ${isValidMediaUrl(mediaUrl) ? "avail-hint-ok" : "avail-hint-no"}`}>
+                {isValidMediaUrl(mediaUrl) ? mediaHint(mediaUrl) : "Unsupported URL"}
+              </p>
+            )}
+          </div>
 
           <button type="button" className="btn-primary xchain-exec-btn" onClick={handleExecute}>
             Execute route

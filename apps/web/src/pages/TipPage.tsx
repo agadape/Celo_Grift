@@ -8,6 +8,7 @@ import {CrossChainQuote} from "../components/CrossChainQuote";
 import {TipFeed, type TipEntry, formatTipAmount} from "../components/TipFeed";
 import {decodeMetadata} from "../lib/metadata";
 import {CELO_TOKENS, ERC20_ABI} from "../lib/tokens";
+import {buildMessage, isValidMediaUrl, mediaHint} from "../lib/media";
 
 const REGISTRY = getActiveRegistry();
 const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000";
@@ -47,6 +48,7 @@ export function TipPage() {
   const [amount, setAmount] = useState("0.1");
   const [message, setMessage] = useState("");
   const [reaction, setReaction] = useState("");
+  const [mediaUrl, setMediaUrl] = useState("");
   const [showQR, setShowQR] = useState(false);
   const [tipStatus, setTipStatus] = useState<TipStatus>({kind: "idle"});
   const [loadedTips, setLoadedTips] = useState<TipEntry[] | null>(null);
@@ -116,7 +118,7 @@ export function TipPage() {
       return;
     }
 
-    const fullMessage = reaction ? `${reaction} ${message}`.trim() : message;
+    const fullMessage = buildMessage(message, reaction, mediaUrl);
 
     try {
       const walletClient = getWalletClient();
@@ -154,13 +156,14 @@ export function TipPage() {
         address: REGISTRY.address,
         abi: SAWER_REGISTRY_ABI,
         functionName: "recordTip",
-        args: [lookup.creator.handle, tokenAddress, amountParsed, fullMessage.slice(0, 200), ZERO_BYTES32],
+        args: [lookup.creator.handle, tokenAddress, amountParsed, fullMessage.slice(0, 400), ZERO_BYTES32],
       });
       await publicClient.waitForTransactionReceipt({hash: receiptTx});
 
       setTipStatus({kind: "success", transferTx, receiptTx});
       setMessage("");
       setReaction("");
+      setMediaUrl("");
     } catch (err) {
       setTipStatus({kind: "error", message: err instanceof Error ? err.message : "Tip failed."});
     }
@@ -383,14 +386,31 @@ export function TipPage() {
               <span className="label">Message <span className="opt">(optional)</span></span>
               <textarea
                 value={message}
-                onChange={(e) => setMessage(e.target.value.slice(0, 200))}
+                onChange={(e) => setMessage(e.target.value.slice(0, mediaUrl ? 120 : 200))}
                 placeholder="Thanks for streaming!"
                 rows={2}
-                maxLength={200}
+                maxLength={mediaUrl ? 120 : 200}
                 disabled={tipStatus.kind === "sending"}
               />
-              <p className="hint">{message.length}/200</p>
+              <p className="hint">{message.length}/{mediaUrl ? 120 : 200}</p>
             </label>
+
+            <div>
+              <span className="label">Media <span className="opt">(optional — shows in OBS overlay)</span></span>
+              <input
+                type="url"
+                value={mediaUrl}
+                onChange={(e) => setMediaUrl(e.target.value.slice(0, 180))}
+                placeholder="YouTube link, GIF URL, or image URL"
+                disabled={tipStatus.kind === "sending"}
+                className={mediaUrl && !isValidMediaUrl(mediaUrl) ? "input-error" : ""}
+              />
+              {mediaUrl && (
+                <p className={`hint ${isValidMediaUrl(mediaUrl) ? "avail-hint-ok" : "avail-hint-no"}`}>
+                  {isValidMediaUrl(mediaUrl) ? mediaHint(mediaUrl) : "Unsupported URL — use YouTube, Giphy, Tenor, Imgur, or a direct image link"}
+                </p>
+              )}
+            </div>
 
             <button type="submit" disabled={tipStatus.kind === "sending" || tipStatus.kind === "success"}>
               {tipStatus.kind === "sending"
