@@ -41,6 +41,8 @@ export function EditProfilePage() {
   const [goalToken, setGoalToken] = useState("CELO");
   const [subEnabled, setSubEnabled] = useState(false);
   const [subPrice, setSubPrice] = useState("1");
+  const [yieldStrategy, setYieldStrategy] = useState<0 | 1>(0); // 0 = WALLET, 1 = AAVE
+  const [aavePoolConfigured, setAavePoolConfigured] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>({kind: "idle"});
 
   const loadCreator = useCallback(async () => {
@@ -81,6 +83,25 @@ export function EditProfilePage() {
           setSubPrice(parseFloat(formatUnits(cfg[1], 18)).toString());
         }
       } catch { /* subscription not on this contract version */ }
+
+      // Load yield strategy + check Aave availability on this chain
+      try {
+        const [strategy, poolProvider] = await Promise.all([
+          publicClient.readContract({
+            address: REGISTRY.address,
+            abi: SAWER_REGISTRY_ABI,
+            functionName: "yieldStrategies",
+            args: [handleHash(normalized)],
+          }),
+          publicClient.readContract({
+            address: REGISTRY.address,
+            abi: SAWER_REGISTRY_ABI,
+            functionName: "POOL_PROVIDER",
+          }),
+        ]);
+        setYieldStrategy(strategy === 1 ? 1 : 0);
+        setAavePoolConfigured(poolProvider !== "0x0000000000000000000000000000000000000000");
+      } catch { /* yield not on this contract version */ }
     } catch (err) {
       setPageState({kind: "error", message: err instanceof Error ? err.message : "Failed to load creator."});
     }
@@ -163,6 +184,20 @@ export function EditProfilePage() {
         });
         await publicClient.waitForTransactionReceipt({hash: subTx});
       } catch { /* setSubConfig not available on older contract */ }
+
+      // Save yield strategy (separate tx — only if Aave is configured for this chain)
+      if (aavePoolConfigured) {
+        try {
+          const yieldTx = await walletClient.writeContract({
+            account: walletAddress,
+            address: REGISTRY.address,
+            abi: SAWER_REGISTRY_ABI,
+            functionName: "setYieldStrategy",
+            args: [normalized, yieldStrategy],
+          });
+          await publicClient.waitForTransactionReceipt({hash: yieldTx});
+        } catch { /* yield not on this contract version */ }
+      }
       setSaveStatus({kind: "success", txHash});
       setTimeout(() => navigate(`/s/${normalized}`), 2000);
     } catch (err) {
@@ -318,6 +353,29 @@ export function EditProfilePage() {
               </div>
             )}
           </div>
+
+          {/* Auto-yield (Aave) */}
+          {aavePoolConfigured && (
+            <div className="sub-config-section">
+              <div className="links-header">
+                <span className="label">Auto-yield <span className="opt">(earn on idle tips)</span></span>
+                <label className="goal-toggle">
+                  <input
+                    type="checkbox"
+                    checked={yieldStrategy === 1}
+                    onChange={(e) => setYieldStrategy(e.target.checked ? 1 : 0)}
+                    disabled={isSaving}
+                  />
+                  <span>{yieldStrategy === 1 ? "Auto-deposit to Aave" : "Send to wallet"}</span>
+                </label>
+              </div>
+              <p className="hint">
+                {yieldStrategy === 1
+                  ? "Incoming ERC-20 tips (cUSD, USDC) auto-supply to Aave on your behalf — you keep earning while you sleep. Native CELO still goes straight to your wallet. Withdraw anytime via the Aave app."
+                  : "Tips arrive in your wallet as usual. Toggle on to put them to work earning yield."}
+              </p>
+            </div>
+          )}
 
           <button type="submit" disabled={isSaving || saveStatus.kind === "success"}>
             {isSaving ? "Saving on-chain…" : saveStatus.kind === "success" ? "✓ Saved" : "Save profile"}

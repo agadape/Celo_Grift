@@ -94,6 +94,50 @@ export const SAWER_REGISTRY_ABI = [
     ],
     anonymous: false,
   },
+  // ── Yield strategy (Aave auto-supply) ──
+  {
+    type: "function",
+    name: "POOL_PROVIDER",
+    inputs: [],
+    outputs: [{name: "", type: "address"}],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "setYieldStrategy",
+    inputs: [
+      {name: "handle", type: "string"},
+      {name: "strategy", type: "uint8"},
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "yieldStrategies",
+    inputs: [{name: "", type: "bytes32"}],
+    outputs: [{name: "", type: "uint8"}],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "YieldStrategySet",
+    inputs: [
+      {name: "handleHash", type: "bytes32", indexed: true},
+      {name: "strategy", type: "uint8", indexed: false},
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "YieldDeposited",
+    inputs: [
+      {name: "creator", type: "address", indexed: true},
+      {name: "token", type: "address", indexed: true},
+      {name: "amount", type: "uint256", indexed: false},
+    ],
+    anonymous: false,
+  },
   // ── Subscriptions ──
   {
     type: "function",

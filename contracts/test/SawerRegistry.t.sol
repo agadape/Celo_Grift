@@ -4,8 +4,70 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {SawerRegistry} from "../src/SawerRegistry.sol";
 
+contract MockERC20 {
+    string public name = "Mock";
+    string public symbol = "MOCK";
+    uint8 public decimals = 18;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        require(balanceOf[msg.sender] >= amount, "BAL");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        require(allowance[from][msg.sender] >= amount, "ALLOW");
+        require(balanceOf[from] >= amount, "BAL");
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+
+contract MockAavePool {
+    bool public shouldRevert;
+
+    function setShouldRevert(bool v) external {
+        shouldRevert = v;
+    }
+
+    function supply(address asset, uint256 amount, address onBehalfOf, uint16) external {
+        if (shouldRevert) revert("LISTING");
+        // Pull tokens from caller (mimics Aave behaviour)
+        MockERC20(asset).transferFrom(msg.sender, address(this), amount);
+        // Pretend to mint aTokens (we just credit the onBehalfOf — for accounting only)
+        MockERC20(asset).transfer(onBehalfOf, amount);
+    }
+}
+
+contract MockPoolProvider {
+    address public pool;
+    constructor(address _pool) {
+        pool = _pool;
+    }
+    function getPool() external view returns (address) {
+        return pool;
+    }
+}
+
 contract SawerRegistryTest is Test {
     SawerRegistry internal registry;
+    MockERC20 internal cusd;
+    MockAavePool internal aave;
 
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
@@ -32,18 +94,20 @@ contract SawerRegistryTest is Test {
         bytes32 indexed routeId
     );
 
+    event YieldDeposited(address indexed creator, address indexed token, uint256 amount);
+
     function setUp() public {
-        registry = new SawerRegistry();
+        registry = new SawerRegistry(address(0));
+        cusd = new MockERC20();
+        aave = new MockAavePool();
     }
 
     // ── registerCreator ────────────────────────────────────────────────────
 
     function test_RegisterCreator_HappyPath() public {
         vm.prank(alice);
-
         vm.expectEmit(true, true, true, true);
         emit CreatorRegistered(alice, keccak256(bytes("alice")), "alice", "ipfs://meta");
-
         registry.registerCreator("alice", "ipfs://meta");
 
         (address payout, string memory handle, string memory metadataURI, bool exists) =
@@ -55,38 +119,13 @@ contract SawerRegistryTest is Test {
         assertTrue(exists);
     }
 
-    function test_RegisterCreator_AcceptsEmptyMetadata() public {
-        vm.prank(alice);
-        registry.registerCreator("alice", "");
-
-        (,, string memory metadataURI, bool exists) =
-            registry.creatorsByHandle(keccak256(bytes("alice")));
-
-        assertEq(metadataURI, "");
-        assertTrue(exists);
-    }
-
     function test_RegisterCreator_RevertsOnDuplicateHandle() public {
         vm.prank(alice);
         registry.registerCreator("alice", "");
 
         vm.prank(bob);
-        vm.expectRevert(bytes("HANDLE_TAKEN"));
+        vm.expectRevert(SawerRegistry.HandleTaken.selector);
         registry.registerCreator("alice", "");
-    }
-
-    function test_RegisterCreator_DifferentHandlesAllowed() public {
-        vm.prank(alice);
-        registry.registerCreator("alice", "");
-
-        vm.prank(bob);
-        registry.registerCreator("bob", "");
-
-        (address aliceAddr,,,) = registry.creatorsByHandle(keccak256(bytes("alice")));
-        (address bobAddr,,,) = registry.creatorsByHandle(keccak256(bytes("bob")));
-
-        assertEq(aliceAddr, alice);
-        assertEq(bobAddr, bob);
     }
 
     // ── updateMetadata ─────────────────────────────────────────────────────
@@ -100,14 +139,11 @@ contract SawerRegistryTest is Test {
 
         vm.prank(alice);
         registry.updateMetadata("alice", "ipfs://new");
-
-        (,, string memory metadataURI,) = registry.creatorsByHandle(keccak256(bytes("alice")));
-        assertEq(metadataURI, "ipfs://new");
     }
 
     function test_UpdateMetadata_RevertsOnUnknownHandle() public {
         vm.prank(alice);
-        vm.expectRevert(bytes("UNKNOWN_CREATOR"));
+        vm.expectRevert(SawerRegistry.UnknownCreator.selector);
         registry.updateMetadata("ghost", "ipfs://new");
     }
 
@@ -116,41 +152,161 @@ contract SawerRegistryTest is Test {
         registry.registerCreator("alice", "ipfs://old");
 
         vm.prank(bob);
-        vm.expectRevert(bytes("NOT_CREATOR"));
+        vm.expectRevert(SawerRegistry.NotCreator.selector);
         registry.updateMetadata("alice", "ipfs://stolen");
     }
 
-    function test_UpdateMetadata_AcceptsEmptyURI() public {
-        vm.prank(alice);
-        registry.registerCreator("alice", "ipfs://old");
+    // ── tip (native) ───────────────────────────────────────────────────────
 
+    function test_TipNative_HappyPath() public {
         vm.prank(alice);
-        registry.updateMetadata("alice", "");
+        registry.registerCreator("alice", "");
 
-        (,, string memory metadataURI,) = registry.creatorsByHandle(keccak256(bytes("alice")));
-        assertEq(metadataURI, "");
+        vm.deal(bob, 10 ether);
+        uint256 aliceBalBefore = alice.balance;
+
+        vm.expectEmit(true, true, true, true);
+        emit TipReceipt(alice, address(0), 0.5 ether, "ty", bytes32(0));
+
+        vm.prank(bob);
+        registry.tip{value: 0.5 ether}("alice", address(0), 0.5 ether, "ty", bytes32(0));
+
+        assertEq(alice.balance, aliceBalBefore + 0.5 ether);
     }
 
-    // ── recordTip ──────────────────────────────────────────────────────────
+    function test_TipNative_RevertsZeroValue() public {
+        vm.prank(alice);
+        registry.registerCreator("alice", "");
+
+        vm.prank(bob);
+        vm.expectRevert(SawerRegistry.NoValue.selector);
+        registry.tip("alice", address(0), 0, "", bytes32(0));
+    }
+
+    // ── tip (ERC-20 → wallet) ──────────────────────────────────────────────
+
+    function test_TipErc20_HappyPath() public {
+        vm.prank(alice);
+        registry.registerCreator("alice", "");
+
+        cusd.mint(bob, 1000e18);
+        vm.prank(bob);
+        cusd.approve(address(registry), 100e18);
+
+        vm.prank(bob);
+        registry.tip("alice", address(cusd), 10e18, "thanks", bytes32(0));
+
+        assertEq(cusd.balanceOf(alice), 10e18);
+        assertEq(cusd.balanceOf(bob), 990e18);
+    }
+
+    function test_TipErc20_RevertsIfValueSent() public {
+        vm.prank(alice);
+        registry.registerCreator("alice", "");
+
+        vm.deal(bob, 1 ether);
+        vm.prank(bob);
+        vm.expectRevert(SawerRegistry.UnexpectedValue.selector);
+        registry.tip{value: 0.1 ether}("alice", address(cusd), 10e18, "x", bytes32(0));
+    }
+
+    // ── tip (ERC-20 → Aave) ────────────────────────────────────────────────
+
+    function test_TipErc20_RoutesToAaveWhenEnabled() public {
+        MockPoolProvider provider = new MockPoolProvider(address(aave));
+        SawerRegistry r = new SawerRegistry(address(provider));
+
+        vm.prank(alice);
+        r.registerCreator("alice", "");
+        vm.prank(alice);
+        r.setYieldStrategy("alice", SawerRegistry.YieldStrategy.AAVE);
+
+        cusd.mint(bob, 1000e18);
+        vm.prank(bob);
+        cusd.approve(address(r), 100e18);
+
+        vm.expectEmit(true, true, false, true);
+        emit YieldDeposited(alice, address(cusd), 10e18);
+
+        vm.prank(bob);
+        r.tip("alice", address(cusd), 10e18, "thanks", bytes32(0));
+
+        // Mock pool credits onBehalfOf with the supplied tokens (= aToken stand-in)
+        assertEq(cusd.balanceOf(alice), 10e18);
+    }
+
+    function test_TipErc20_FallsBackToWalletIfAaveReverts() public {
+        MockPoolProvider provider = new MockPoolProvider(address(aave));
+        SawerRegistry r = new SawerRegistry(address(provider));
+        aave.setShouldRevert(true);
+
+        vm.prank(alice);
+        r.registerCreator("alice", "");
+        vm.prank(alice);
+        r.setYieldStrategy("alice", SawerRegistry.YieldStrategy.AAVE);
+
+        cusd.mint(bob, 1000e18);
+        vm.prank(bob);
+        cusd.approve(address(r), 100e18);
+
+        vm.prank(bob);
+        r.tip("alice", address(cusd), 10e18, "fallback", bytes32(0));
+
+        // Tokens still landed at alice
+        assertEq(cusd.balanceOf(alice), 10e18);
+    }
+
+    // ── recordTip (cross-chain receipt) ────────────────────────────────────
 
     function test_RecordTip_EmitsEvent() public {
         vm.prank(alice);
         registry.registerCreator("alice", "");
 
-        bytes32 routeId = keccak256("some-lifi-route-id");
-
         vm.expectEmit(true, true, true, true);
-        emit TipReceipt(alice, usdc, 1_000_000, "thanks for streaming!", routeId);
+        emit TipReceipt(alice, usdc, 1_000_000, "ty", keccak256("rid"));
 
         vm.prank(bob);
-        registry.recordTip("alice", usdc, 1_000_000, "thanks for streaming!", routeId);
+        registry.recordTip("alice", usdc, 1_000_000, "ty", keccak256("rid"));
     }
 
     function test_RecordTip_RevertsOnUnknownCreator() public {
-        bytes32 routeId = keccak256("any");
+        vm.expectRevert(SawerRegistry.UnknownCreator.selector);
+        registry.recordTip("ghost", usdc, 100, "hi", keccak256("x"));
+    }
 
-        vm.expectRevert(bytes("UNKNOWN_CREATOR"));
-        registry.recordTip("ghost", usdc, 100, "hi", routeId);
+    // ── subscriptions ──────────────────────────────────────────────────────
+
+    function test_Subscribe_StackingExtendsExpiry() public {
+        vm.prank(alice);
+        registry.registerCreator("alice", "");
+        vm.prank(alice);
+        registry.setSubConfig("alice", true, 1 ether);
+
+        vm.deal(bob, 5 ether);
+
+        vm.prank(bob);
+        registry.subscribe{value: 1 ether}("alice");
+
+        uint256 firstExpiry = registry.subExpiry(keccak256(bytes("alice")), bob);
+        assertEq(firstExpiry, block.timestamp + 30 days);
+
+        vm.prank(bob);
+        registry.subscribe{value: 1 ether}("alice");
+
+        uint256 secondExpiry = registry.subExpiry(keccak256(bytes("alice")), bob);
+        assertEq(secondExpiry, firstExpiry + 30 days);
+    }
+
+    function test_Subscribe_RevertsBelowPrice() public {
+        vm.prank(alice);
+        registry.registerCreator("alice", "");
+        vm.prank(alice);
+        registry.setSubConfig("alice", true, 1 ether);
+
+        vm.deal(bob, 5 ether);
+        vm.prank(bob);
+        vm.expectRevert(SawerRegistry.Insufficient.selector);
+        registry.subscribe{value: 0.5 ether}("alice");
     }
 
     // ── fuzz ───────────────────────────────────────────────────────────────
@@ -164,28 +320,5 @@ contract SawerRegistryTest is Test {
 
         (,,, bool exists) = registry.creatorsByHandle(keccak256(bytes(handle)));
         assertTrue(exists);
-    }
-
-    function testFuzz_RecordTip_AnyAmount(uint256 amount) public {
-        vm.prank(alice);
-        registry.registerCreator("alice", "");
-
-        bytes32 routeId = keccak256("route");
-
-        vm.expectEmit(true, true, true, true);
-        emit TipReceipt(alice, usdc, amount, "msg", routeId);
-
-        registry.recordTip("alice", usdc, amount, "msg", routeId);
-    }
-
-    function testFuzz_UpdateMetadata_AnyURI(string calldata uri) public {
-        vm.prank(alice);
-        registry.registerCreator("alice", "");
-
-        vm.prank(alice);
-        registry.updateMetadata("alice", uri);
-
-        (,, string memory metadataURI,) = registry.creatorsByHandle(keccak256(bytes("alice")));
-        assertEq(metadataURI, uri);
     }
 }

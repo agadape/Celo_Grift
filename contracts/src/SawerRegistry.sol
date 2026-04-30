@@ -3,10 +3,35 @@ pragma solidity ^0.8.24;
 
 interface IERC20 {
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    function transfer(address to, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
+}
+
+interface IAavePool {
+    function supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode) external;
+}
+
+interface IPoolAddressesProvider {
+    function getPool() external view returns (address);
 }
 
 contract SawerRegistry {
-    // ─── Creator ────────────────────────────────────────────────────────────
+    // ─── Errors ─────────────────────────────────────────────────────────────
+    error HandleTaken();
+    error UnknownCreator();
+    error NotCreator();
+    error NoValue();
+    error UnexpectedValue();
+    error TransferFailed();
+    error SubsDisabled();
+    error Insufficient();
+
+    // ─── Types ──────────────────────────────────────────────────────────────
+    enum YieldStrategy {
+        WALLET,
+        AAVE
+    }
+
     struct Creator {
         address payoutAddress;
         string handle;
@@ -14,8 +39,22 @@ contract SawerRegistry {
         bool exists;
     }
 
-    mapping(bytes32 => Creator) public creatorsByHandle;
+    struct SubConfig {
+        bool enabled;
+        uint256 priceWei;
+    }
 
+    // ─── Storage ────────────────────────────────────────────────────────────
+    /// Aave V3 PoolAddressesProvider — resolves to current Pool at call time,
+    /// so this contract survives Aave Pool upgrades. address(0) disables yield.
+    address public immutable POOL_PROVIDER;
+
+    mapping(bytes32 => Creator) public creatorsByHandle;
+    mapping(bytes32 => SubConfig) public subConfigs;
+    mapping(bytes32 => mapping(address => uint256)) public subExpiry;
+    mapping(bytes32 => YieldStrategy) public yieldStrategies;
+
+    // ─── Events ─────────────────────────────────────────────────────────────
     event CreatorRegistered(
         address indexed creator,
         bytes32 indexed handleHash,
@@ -37,12 +76,29 @@ contract SawerRegistry {
         bytes32 indexed routeId
     );
 
-    function registerCreator(
-        string calldata handle,
-        string calldata metadataURI
-    ) external {
+    event SubConfigSet(bytes32 indexed handleHash, bool enabled, uint256 priceWei);
+
+    event Subscribed(
+        address indexed subscriber,
+        address indexed creator,
+        bytes32 indexed handleHash,
+        uint256 expiresAt
+    );
+
+    event YieldStrategySet(bytes32 indexed handleHash, YieldStrategy strategy);
+    event YieldDeposited(address indexed creator, address indexed token, uint256 amount);
+
+    // ─── Init ───────────────────────────────────────────────────────────────
+    /// @param poolProvider Aave v3 PoolAddressesProvider on this chain.
+    /// Pass address(0) to disable yield routing (test/dev chains without Aave).
+    constructor(address poolProvider) {
+        POOL_PROVIDER = poolProvider;
+    }
+
+    // ─── Creator registry ───────────────────────────────────────────────────
+    function registerCreator(string calldata handle, string calldata metadataURI) external {
         bytes32 hash = keccak256(bytes(handle));
-        require(!creatorsByHandle[hash].exists, "HANDLE_TAKEN");
+        if (creatorsByHandle[hash].exists) revert HandleTaken();
 
         creatorsByHandle[hash] = Creator({
             payoutAddress: msg.sender,
@@ -54,22 +110,30 @@ contract SawerRegistry {
         emit CreatorRegistered(msg.sender, hash, handle, metadataURI);
     }
 
-    function updateMetadata(
-        string calldata handle,
-        string calldata newMetadataURI
-    ) external {
+    function updateMetadata(string calldata handle, string calldata newMetadataURI) external {
         bytes32 hash = keccak256(bytes(handle));
         Creator storage creator = creatorsByHandle[hash];
-        require(creator.exists, "UNKNOWN_CREATOR");
-        require(creator.payoutAddress == msg.sender, "NOT_CREATOR");
+        if (!creator.exists) revert UnknownCreator();
+        if (creator.payoutAddress != msg.sender) revert NotCreator();
 
         creator.metadataURI = newMetadataURI;
-
         emit MetadataUpdated(msg.sender, hash, newMetadataURI);
     }
 
-    // Single-tx tip: transfers funds + emits receipt atomically.
-    // token == address(0) → native CELO (send msg.value); otherwise ERC-20 transferFrom.
+    function setYieldStrategy(string calldata handle, YieldStrategy strategy) external {
+        bytes32 hash = keccak256(bytes(handle));
+        Creator storage creator = creatorsByHandle[hash];
+        if (!creator.exists) revert UnknownCreator();
+        if (creator.payoutAddress != msg.sender) revert NotCreator();
+
+        yieldStrategies[hash] = strategy;
+        emit YieldStrategySet(hash, strategy);
+    }
+
+    // ─── Tipping ────────────────────────────────────────────────────────────
+    /// Single-tx tip. Routes ERC-20 to Aave when creator has opted in,
+    /// otherwise sends straight to creator's wallet. Native CELO always
+    /// goes to wallet.
     function tip(
         string calldata handle,
         address token,
@@ -79,24 +143,53 @@ contract SawerRegistry {
     ) external payable {
         bytes32 hash = keccak256(bytes(handle));
         Creator memory creator = creatorsByHandle[hash];
-        require(creator.exists, "UNKNOWN_CREATOR");
+        if (!creator.exists) revert UnknownCreator();
 
         uint256 actualAmount;
+
         if (token == address(0)) {
-            require(msg.value > 0, "NO_VALUE");
+            // Native CELO
+            if (msg.value == 0) revert NoValue();
             actualAmount = msg.value;
             (bool ok,) = creator.payoutAddress.call{value: msg.value}("");
-            require(ok, "TRANSFER_FAILED");
+            if (!ok) revert TransferFailed();
         } else {
-            require(msg.value == 0, "UNEXPECTED_VALUE");
+            if (msg.value != 0) revert UnexpectedValue();
             actualAmount = amount;
-            require(IERC20(token).transferFrom(msg.sender, creator.payoutAddress, amount), "TRANSFER_FAILED");
+
+            bool useYield = POOL_PROVIDER != address(0)
+                && yieldStrategies[hash] == YieldStrategy.AAVE;
+
+            if (useYield) {
+                // Resolve current Pool (survives Aave upgrades).
+                address pool = IPoolAddressesProvider(POOL_PROVIDER).getPool();
+                // Pull funds in, supply to Aave on creator's behalf.
+                if (!IERC20(token).transferFrom(msg.sender, address(this), amount)) {
+                    revert TransferFailed();
+                }
+                IERC20(token).approve(pool, amount);
+                try IAavePool(pool).supply(token, amount, creator.payoutAddress, 0) {
+                    emit YieldDeposited(creator.payoutAddress, token, amount);
+                } catch {
+                    // Token not listed on Aave (or other failure) → fall back to wallet.
+                    IERC20(token).approve(pool, 0);
+                    if (!IERC20(token).transfer(creator.payoutAddress, amount)) {
+                        revert TransferFailed();
+                    }
+                }
+            } else {
+                if (!IERC20(token).transferFrom(msg.sender, creator.payoutAddress, amount)) {
+                    revert TransferFailed();
+                }
+            }
         }
 
         emit TipReceipt(creator.payoutAddress, token, actualAmount, message, routeId);
     }
 
-    // Kept for backwards-compatibility with older frontends.
+    /// Receipt-only call for tips that arrived via cross-chain bridge.
+    /// The actual asset movement happens off-contract; this just emits the log
+    /// so the feed/leaderboard see it.
     function recordTip(
         string calldata handle,
         address token,
@@ -105,49 +198,16 @@ contract SawerRegistry {
         bytes32 routeId
     ) external {
         Creator memory creator = creatorsByHandle[keccak256(bytes(handle))];
-        require(creator.exists, "UNKNOWN_CREATOR");
-
-        emit TipReceipt(
-            creator.payoutAddress,
-            token,
-            amount,
-            message,
-            routeId
-        );
+        if (!creator.exists) revert UnknownCreator();
+        emit TipReceipt(creator.payoutAddress, token, amount, message, routeId);
     }
 
     // ─── Subscriptions ──────────────────────────────────────────────────────
-    struct SubConfig {
-        bool enabled;
-        uint256 priceWei; // monthly price in native CELO
-    }
-
-    // handleHash => subscriber address => expiry timestamp
-    mapping(bytes32 => mapping(address => uint256)) public subExpiry;
-    mapping(bytes32 => SubConfig) public subConfigs;
-
-    event SubConfigSet(
-        bytes32 indexed handleHash,
-        bool enabled,
-        uint256 priceWei
-    );
-
-    event Subscribed(
-        address indexed subscriber,
-        address indexed creator,
-        bytes32 indexed handleHash,
-        uint256 expiresAt
-    );
-
-    function setSubConfig(
-        string calldata handle,
-        bool enabled,
-        uint256 priceWei
-    ) external {
+    function setSubConfig(string calldata handle, bool enabled, uint256 priceWei) external {
         bytes32 hash = keccak256(bytes(handle));
         Creator storage creator = creatorsByHandle[hash];
-        require(creator.exists, "UNKNOWN_CREATOR");
-        require(creator.payoutAddress == msg.sender, "NOT_CREATOR");
+        if (!creator.exists) revert UnknownCreator();
+        if (creator.payoutAddress != msg.sender) revert NotCreator();
 
         subConfigs[hash] = SubConfig(enabled, priceWei);
         emit SubConfigSet(hash, enabled, priceWei);
@@ -156,30 +216,25 @@ contract SawerRegistry {
     function subscribe(string calldata handle) external payable {
         bytes32 hash = keccak256(bytes(handle));
         Creator memory creator = creatorsByHandle[hash];
-        require(creator.exists, "UNKNOWN_CREATOR");
+        if (!creator.exists) revert UnknownCreator();
         SubConfig memory cfg = subConfigs[hash];
-        require(cfg.enabled, "SUBS_DISABLED");
-        require(msg.value >= cfg.priceWei, "INSUFFICIENT");
+        if (!cfg.enabled) revert SubsDisabled();
+        if (msg.value < cfg.priceWei) revert Insufficient();
 
-        // Stack time if already subscribed
-        uint256 base = subExpiry[hash][msg.sender] > block.timestamp
-            ? subExpiry[hash][msg.sender]
-            : block.timestamp;
-        uint256 newExpiry = base + 30 days;
+        uint256 base = subExpiry[hash][msg.sender];
+        uint256 newExpiry;
+        unchecked {
+            newExpiry = (base > block.timestamp ? base : block.timestamp) + 30 days;
+        }
         subExpiry[hash][msg.sender] = newExpiry;
 
-        // Forward payment directly to creator (checks-effects-interactions)
         (bool ok,) = creator.payoutAddress.call{value: msg.value}("");
-        require(ok, "TRANSFER_FAILED");
+        if (!ok) revert TransferFailed();
 
         emit Subscribed(msg.sender, creator.payoutAddress, hash, newExpiry);
     }
 
-    function isSubscriber(bytes32 handleHash, address viewer)
-        external
-        view
-        returns (bool)
-    {
+    function isSubscriber(bytes32 handleHash, address viewer) external view returns (bool) {
         return subExpiry[handleHash][viewer] > block.timestamp;
     }
 }

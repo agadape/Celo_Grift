@@ -61,6 +61,7 @@ export function TipPage() {
   const [subConfig, setSubConfig] = useState<{enabled: boolean; priceWei: bigint} | null>(null);
   const [subExpiry, setSubExpiry] = useState<bigint>(0n);
   const [subStatus, setSubStatus] = useState<SubStatus>({kind: "idle"});
+  const [yieldEnabled, setYieldEnabled] = useState(false);
   const hasInjectedWallet = typeof window !== "undefined" && Boolean(window.ethereum);
 
   const selectedToken = CELO_TOKENS[selectedTokenIdx] ?? CELO_TOKENS[0];
@@ -89,6 +90,17 @@ export function TipPage() {
         });
         setSubConfig({enabled: cfg[0], priceWei: cfg[1]});
       } catch { /* subscription not configured on this contract version */ }
+
+      // Load yield strategy
+      try {
+        const strategy = await publicClient.readContract({
+          address: REGISTRY.address,
+          abi: SAWER_REGISTRY_ABI,
+          functionName: "yieldStrategies",
+          args: [handleHash(normalized)],
+        });
+        setYieldEnabled(strategy === 1);
+      } catch { /* yield not on this contract */ }
     } catch (err) {
       setLookup({kind: "error", message: err instanceof Error ? err.message : "Failed to load creator."});
     }
@@ -306,6 +318,12 @@ export function TipPage() {
               </a>
             ))}
           </div>
+        )}
+
+        {yieldEnabled && (
+          <p className="yield-badge" title="ERC-20 tips auto-supply to Aave for yield">
+            🌱 Tips earn yield · auto-supplied to Aave
+          </p>
         )}
 
         <div className="creator-meta-row">

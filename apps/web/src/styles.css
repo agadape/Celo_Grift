@@ -1514,6 +1514,23 @@ a:hover {
   letter-spacing: 0.02em;
 }
 
+/* ─── Yield badge (TipPage) ─────────────────────────────────────── */
+.yield-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1a7a2e;
+  background: linear-gradient(135deg, #e8f5e9, #d3ecd6);
+  border: 1px solid #b6d8b9;
+  border-radius: 999px;
+  padding: 5px 12px;
+  margin: 8px 0 4px;
+  width: fit-content;
+  letter-spacing: 0.01em;
+}
+
 /* subscriber count in dashboard */
 .sub-count-badge {
   display: inline-flex;
