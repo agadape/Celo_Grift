@@ -214,19 +214,19 @@ type Address = `0x${string}`;
 
 export const SAWER_REGISTRY_DEPLOYMENT = {
   celoSepolia: {
-    address: "0xA5527683334a046fbE487989Bd95943233C7cB3e" as Address,
+    address: "0xa4b56B42724364443b6e2979A2206Ee535801f4b" as Address,
     chainId: celoSepolia.id,
-    deployTxHash: "0x0d2e85333a06ba31409c1ba00a8c785a05067813f627aa86e9dfd35aaa11bf18" as Address,
-    deployBlock: 24252791n,
-    explorer: "https://celo-sepolia.blockscout.com/address/0xA5527683334a046fbE487989Bd95943233C7cB3e",
+    deployTxHash: "0x29c6eea04c738619cbfc71e9ca1ee22679c858bd50b605d32a4d49631299d52f" as Address,
+    deployBlock: 24257550n,
+    explorer: "https://celo-sepolia.blockscout.com/address/0xa4b56B42724364443b6e2979A2206Ee535801f4b",
     blockExplorerTx: (tx: string) => `https://celo-sepolia.blockscout.com/tx/${tx}`,
   },
   celo: {
-    address: "0xC57eBdE65d8AC7f1A361cb5B94986CfE9C7f799b" as Address,
+    address: "0x2112A54d0b3Df6c0f553E05459E75835A92570f1" as Address,
     chainId: celo.id,
-    deployTxHash: "0xff671e6a13478557fc1234bc0aedbc459b6d01b4fa2ae99532a43ad1c378145f" as Address,
-    deployBlock: 65636043n,
-    explorer: "https://explorer.celo.org/mainnet/address/0xC57eBdE65d8AC7f1A361cb5B94986CfE9C7f799b",
+    deployTxHash: "0xdb66ec3fe22040db664ec3a9573810d7c43a269395146970b189e08f88b5a11e" as Address,
+    deployBlock: 65640826n,
+    explorer: "https://explorer.celo.org/mainnet/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1",
     blockExplorerTx: (tx: string) => `https://explorer.celo.org/mainnet/tx/${tx}`,
   },
 } as const;
