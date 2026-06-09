@@ -42,8 +42,10 @@ export function HomePage() {
           <p className="eyebrow">Celo · {ACTIVE_CHAIN.name}</p>
           <h1>Zap</h1>
           <p className="lede">
-            One creator tipping link. Supporters pay from any LI.FI-supported
-            chain. Creators receive stablecoins on Celo MiniPay.
+            The creator monetization suite for Celo — tips, pay-to-unlock
+            content, monthly subscriptions, and live stream alerts. One MiniPay
+            link, stablecoins straight to your wallet; supporters pay from any
+            chain via LI.FI.
           </p>
           {stats && (
             <div className="home-stats">
@@ -98,8 +100,8 @@ export function HomePage() {
         </article>
         <article>
           <span>3</span>
-          <h2>Non-custodial</h2>
-          <p>Funds go straight to your MiniPay wallet. No withdrawal queue, no banking hours.</p>
+          <h2>Built for creators</h2>
+          <p>Stream overlays, pay-to-unlock posts, and monthly subscriptions — not just a payment link. Funds land straight in your MiniPay wallet.</p>
         </article>
       </section>
     </main>
