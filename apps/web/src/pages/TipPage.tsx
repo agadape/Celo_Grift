@@ -3,10 +3,10 @@ import {Link, useParams, useSearchParams} from "react-router-dom";
 import {parseUnits, formatUnits, encodeFunctionData, type Address} from "viem";
 import {connectWallet, getWalletClient} from "../lib/wallet";
 import {publicClient, ACTIVE_CHAIN} from "../lib/publicClient";
-import {SAWER_REGISTRY_ABI, getActiveRegistry, handleHash} from "../lib/contract";
+import {SAWER_REGISTRY_ABI, getActiveRegistry, handleHash, unlockRouteId} from "../lib/contract";
 import {CrossChainQuote} from "../components/CrossChainQuote";
 import {TipFeed, type TipEntry, formatTipAmount} from "../components/TipFeed";
-import {decodeMetadata} from "../lib/metadata";
+import {decodeMetadata, type UnlockItem} from "../lib/metadata";
 import {CELO_TOKENS, ERC20_ABI, type CeloToken} from "../lib/tokens";
 import {buildMessage, isValidMediaUrl, mediaHint} from "../lib/media";
 
@@ -14,6 +14,10 @@ const REGISTRY = getActiveRegistry();
 const ZERO_ADDRESS: Address = "0x0000000000000000000000000000000000000000";
 const ZERO_BYTES32 =
   "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+
+const TIP_RECEIPT_EVENT = SAWER_REGISTRY_ABI.find(
+  (x) => x.type === "event" && x.name === "TipReceipt",
+) as (typeof SAWER_REGISTRY_ABI)[number] & {type: "event"};
 
 const PRESETS_CELO = ["0.1", "0.5", "1", "5"];
 const PRESETS_STABLE = ["1", "5", "10", "25"];
@@ -90,6 +94,9 @@ export function TipPage() {
   const [subExpiry, setSubExpiry] = useState<bigint>(0n);
   const [subStatus, setSubStatus] = useState<SubStatus>({kind: "idle"});
   const [yieldEnabled, setYieldEnabled] = useState(false);
+  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
+  const [unlockBusy, setUnlockBusy] = useState<string | null>(null);
+  const [unlockError, setUnlockError] = useState<{id: string; message: string} | null>(null);
   const hasInjectedWallet = typeof window !== "undefined" && Boolean(window.ethereum);
   const isMiniPay = typeof window !== "undefined" && Boolean(window.ethereum?.isMiniPay);
 
@@ -137,6 +144,53 @@ export function TipPage() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional load on mount + handle change; setState lives in memoized loadCreator, no cascade
   useEffect(() => { void loadCreator(); }, [loadCreator]);
+
+  // Check which unlock items this viewer already paid for: query TipReceipt by the
+  // viewer-bound routeId of each item (one getLogs, OR-filtered) and reveal matches.
+  const checkUnlocks = useCallback(async (viewer: Address, creatorHandle: string, items: UnlockItem[]) => {
+    if (items.length === 0) return;
+    const routeIds: `0x${string}`[] = [];
+    const byRoute = new Map<string, UnlockItem>();
+    for (const it of items) {
+      const rid = unlockRouteId(viewer, creatorHandle, it.id);
+      routeIds.push(rid);
+      byRoute.set(rid.toLowerCase(), it);
+    }
+    try {
+      const logs = await publicClient.getLogs({
+        address: REGISTRY.address,
+        event: TIP_RECEIPT_EVENT,
+        args: {routeId: routeIds},
+        fromBlock: REGISTRY.deployBlock,
+        toBlock: "latest",
+      });
+      const found = new Set<string>();
+      for (const log of logs) {
+        const args = log.args as {routeId?: `0x${string}`; token?: `0x${string}`; amount?: bigint};
+        const item = byRoute.get(String(args.routeId ?? "").toLowerCase());
+        if (!item) continue;
+        const token = CELO_TOKENS.find((t) => t.symbol === item.token);
+        if (!token) continue;
+        // Require the paid token to match the item's token — tip() is permissionless,
+        // so without this a tiny payment in a cheaper token with a matching raw amount
+        // could false-unlock.
+        const expectedToken = token.address === "native" ? ZERO_ADDRESS : token.address;
+        if (String(args.token ?? "").toLowerCase() !== expectedToken.toLowerCase()) continue;
+        let need: bigint;
+        try { need = parseUnits(item.price, token.decimals); } catch { continue; }
+        if ((args.amount ?? 0n) >= need) found.add(item.id);
+      }
+      if (found.size > 0) setUnlockedIds((prev) => new Set([...prev, ...found]));
+    } catch { /* leave items locked on RPC error */ }
+  }, []);
+
+  useEffect(() => {
+    if (lookup.kind === "found" && supporterAddress) {
+      const items = decodeMetadata(lookup.creator.metadataURI)?.unlocks ?? [];
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- setState lives in memoized checkUnlocks after an await, no cascade
+      void checkUnlocks(supporterAddress, lookup.creator.handle, items);
+    }
+  }, [lookup, supporterAddress, checkUnlocks]);
   useEffect(() => {
     if (typeof window !== "undefined" && window.ethereum?.isMiniPay) void handleConnect();
   }, []);
@@ -298,6 +352,32 @@ export function TipPage() {
       setMediaUrl("");
     } catch (err) {
       setTipStatus({kind: "error", message: err instanceof Error ? err.message : "Tip failed."});
+    }
+  }
+
+  async function handleUnlock(item: UnlockItem) {
+    if (lookup.kind !== "found") return;
+    if (!supporterAddress) { void handleConnect(); return; }
+    const token = CELO_TOKENS.find((t) => t.symbol === item.token);
+    if (!token) { setUnlockError({id: item.id, message: `${item.token} isn't available on ${ACTIVE_CHAIN.name}.`}); return; }
+    let need: bigint;
+    try {
+      need = parseUnits(item.price, token.decimals);
+      if (need <= 0n) throw new Error();
+    } catch {
+      setUnlockError({id: item.id, message: "Invalid price."});
+      return;
+    }
+    const routeId = unlockRouteId(supporterAddress, lookup.creator.handle, item.id);
+    setUnlockError(null);
+    setUnlockBusy(item.id);
+    try {
+      await sendTipTx(lookup.creator.handle, token, need, `🔓 ${item.title}`.slice(0, 400), routeId, () => {});
+      setUnlockedIds((prev) => new Set([...prev, item.id]));
+    } catch (err) {
+      setUnlockError({id: item.id, message: err instanceof Error ? err.message : "Unlock failed."});
+    } finally {
+      setUnlockBusy(null);
     }
   }
 
@@ -628,6 +708,47 @@ export function TipPage() {
           </>
         )}
       </form>
+
+      {profile?.unlocks && profile.unlocks.length > 0 && (
+        <div className="creator-panel">
+          <p className="label">🔓 Unlockable content</p>
+          <div style={{display: "flex", flexDirection: "column", gap: 10}}>
+            {profile.unlocks.map((item) => {
+              const isUnlocked = unlockedIds.has(item.id);
+              const busy = unlockBusy === item.id;
+              const isUrl = /^https?:\/\//i.test(item.content);
+              return (
+                <div key={item.id} style={{display: "flex", flexDirection: "column", gap: 6, paddingTop: 10, borderTop: "1px solid rgba(128,128,128,0.18)"}}>
+                  <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8}}>
+                    <span style={{fontWeight: 600}}>{item.title}</span>
+                    {!isUnlocked && <code>{item.price} {item.token}</code>}
+                  </div>
+                  {isUnlocked ? (
+                    <div style={{wordBreak: "break-word"}}>
+                      {isUrl
+                        ? <a href={item.content} target="_blank" rel="noreferrer">{item.content}</a>
+                        : <p style={{margin: 0, whiteSpace: "pre-wrap"}}>{item.content}</p>}
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm"
+                        style={{width: "fit-content"}}
+                        onClick={() => void handleUnlock(item)}
+                        disabled={busy}
+                      >
+                        {busy ? "Unlocking…" : supporterAddress ? `Unlock for ${item.price} ${item.token}` : "Connect to unlock"}
+                      </button>
+                      {unlockError?.id === item.id && <p className="error" style={{margin: 0}}>{unlockError.message}</p>}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <CrossChainQuote supporterAddress={supporterAddress} creatorAddress={creator.payoutAddress} creatorHandle={creator.handle} />
 
