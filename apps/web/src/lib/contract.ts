@@ -239,3 +239,10 @@ export function getActiveRegistry() {
 export function handleHash(handle: string): Address {
   return keccak256(toBytes(handle));
 }
+
+// Deterministic, viewer-bound routeId for a tip-to-unlock payment. The viewer
+// computes it to pay, and the same id (queried as the indexed TipReceipt.routeId)
+// proves that exact viewer unlocked that item — no payer field or tx lookup needed.
+export function unlockRouteId(viewer: string, handle: string, itemId: string): Address {
+  return keccak256(toBytes(`unlock:${viewer.toLowerCase()}:${handle.toLowerCase()}:${itemId}`));
+}

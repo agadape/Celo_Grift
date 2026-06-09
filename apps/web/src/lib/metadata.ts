@@ -9,12 +9,21 @@ export interface TipGoal {
   token: string;  // "CELO" | "cUSD" | "USDC" | "USDT"
 }
 
+export interface UnlockItem {
+  id: string;      // stable id, used in the unlock routeId
+  title: string;   // shown while locked
+  price: string;   // amount as string, in the chosen token's unit
+  token: string;   // "CELO" | "cUSD" | "USDC" | "USDT"
+  content: string; // gated payload (URL or message) revealed after payment
+}
+
 export interface CreatorProfile {
   name: string;
   bio: string;
   avatar: string;
   links: CreatorLink[];
   goal?: TipGoal;
+  unlocks?: UnlockItem[];
 }
 
 const DATA_URI_PREFIX = "data:application/json;utf8,";
@@ -51,12 +60,34 @@ export function decodeMetadata(uri: string): CreatorProfile | null {
       }
     }
 
+    const rawUnlocks = Array.isArray(obj.unlocks) ? obj.unlocks : [];
+    const unlocks: UnlockItem[] = rawUnlocks
+      .filter(
+        (u): u is Record<string, unknown> =>
+          typeof u === "object" &&
+          u !== null &&
+          typeof (u as Record<string, unknown>).id === "string" &&
+          typeof (u as Record<string, unknown>).title === "string" &&
+          typeof (u as Record<string, unknown>).price === "string" &&
+          typeof (u as Record<string, unknown>).token === "string" &&
+          typeof (u as Record<string, unknown>).content === "string",
+      )
+      .slice(0, 12)
+      .map((u) => ({
+        id: String(u.id).trim().slice(0, 32),
+        title: String(u.title).trim().slice(0, 80),
+        price: String(u.price).trim().slice(0, 20),
+        token: String(u.token).trim(),
+        content: String(u.content).trim().slice(0, 500),
+      }));
+
     return {
       name: typeof obj.name === "string" ? obj.name.trim() : "",
       bio: typeof obj.bio === "string" ? obj.bio.trim() : "",
       avatar: typeof obj.avatar === "string" ? obj.avatar.trim() : "",
       links,
       goal,
+      unlocks: unlocks.length > 0 ? unlocks : undefined,
     };
   } catch {
     return null;
