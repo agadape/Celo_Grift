@@ -135,6 +135,7 @@ export function OverlayPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seed test alert in preview mode
     if (isTest) {setQueue([TEST_ALERT]); return;}
     async function load() {
       try {
@@ -205,6 +206,7 @@ export function OverlayPage() {
   // Progress bar
   useEffect(() => {
     if (phase !== "hold") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset progress bar at hold start
     setProgress(100);
     const start = Date.now();
     const id = setInterval(() => {

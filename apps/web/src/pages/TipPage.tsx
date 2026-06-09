@@ -106,6 +106,7 @@ export function TipPage() {
     }
   }, [normalized]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional load on mount + handle change; setState lives in memoized loadCreator, no cascade
   useEffect(() => { void loadCreator(); }, [loadCreator]);
   useEffect(() => {
     if (typeof window !== "undefined" && window.ethereum?.isMiniPay) void handleConnect();

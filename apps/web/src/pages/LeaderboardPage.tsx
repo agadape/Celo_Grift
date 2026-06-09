@@ -1,7 +1,6 @@
 import {useEffect, useState} from "react";
 import {Link} from "react-router-dom";
 import {formatUnits} from "viem";
-import type {Address} from "viem";
 import {publicClient} from "../lib/publicClient";
 import {SAWER_REGISTRY_ABI, getActiveRegistry} from "../lib/contract";
 
