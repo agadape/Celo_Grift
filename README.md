@@ -57,7 +57,7 @@ Built for [Celo Proof of Ship](https://talent.app/~/earn/celo-proof-of-ship) —
 
 | Network | Address | Explorer |
 |---------|---------|---------|
-| **Celo Mainnet** (v5) | [`0x2112A54d0b3Df6c0f553E05459E75835A92570f1`](https://explorer.celo.org/mainnet/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1) | [Blockscout](https://explorer.celo.org/mainnet/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1) |
+| **Celo Mainnet** (v5) | [`0x2112A54d0b3Df6c0f553E05459E75835A92570f1`](https://celoscan.io/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1) | [Celoscan ✓ verified](https://celoscan.io/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1#code) · [Blockscout](https://explorer.celo.org/mainnet/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1) |
 | Celo Sepolia (testnet, v5) | [`0xa4b56B42724364443b6e2979A2206Ee535801f4b`](https://celo-sepolia.blockscout.com/address/0xa4b56B42724364443b6e2979A2206Ee535801f4b) | [Blockscout](https://celo-sepolia.blockscout.com/address/0xa4b56B42724364443b6e2979A2206Ee535801f4b) |
 
 ### On-chain evidence (Celo Mainnet)
@@ -172,7 +172,7 @@ Inspired by [Saweria.co](https://saweria.co) — Indonesia's leading creator tip
 ## Proof of Ship checklist
 
 - [x] Smart contract deployed and verified on Celo Sepolia
-- [x] Smart contract deployed on Celo Mainnet (`0x2112A54d0b3Df6c0f553E05459E75835A92570f1`)
+- [x] Smart contract deployed on Celo Mainnet (`0x2112A54d0b3Df6c0f553E05459E75835A92570f1`) — [verified on Celoscan](https://celoscan.io/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1#code)
 - [x] Frontend live at https://celo-grift-web.vercel.app
 - [x] MiniPay auto-connect + MetaMask + manual address fallback
 - [x] Real on-chain `registerCreator` transaction (Celo Sepolia)
