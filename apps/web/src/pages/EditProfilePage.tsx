@@ -4,12 +4,23 @@ import type {Address} from "viem";
 import {connectWallet, getWalletClient} from "../lib/wallet";
 import {publicClient} from "../lib/publicClient";
 import {SAWER_REGISTRY_ABI, getActiveRegistry, handleHash} from "../lib/contract";
-import {decodeMetadata, encodeMetadata, type CreatorLink} from "../lib/metadata";
+import {decodeMetadata, encodeMetadata, type CreatorLink, type UnlockItem} from "../lib/metadata";
 import {CELO_TOKENS} from "../lib/tokens";
 
 const REGISTRY = getActiveRegistry();
 const MAX_LINKS = 8;
+const MAX_UNLOCKS = 12;
 const GOAL_TOKENS = CELO_TOKENS.map((t) => t.symbol);
+
+// Short stable id for an unlock item. Falls back when crypto.randomUUID is
+// unavailable (e.g. a non-secure context), so it never throws.
+function makeUnlockId(): string {
+  try {
+    return crypto.randomUUID().slice(0, 8);
+  } catch {
+    return Math.random().toString(36).slice(2, 10);
+  }
+}
 
 type PageState =
   | {kind: "loading"}
@@ -35,6 +46,7 @@ export function EditProfilePage() {
   const [bio, setBio] = useState("");
   const [avatar, setAvatar] = useState("");
   const [links, setLinks] = useState<CreatorLink[]>([]);
+  const [unlocks, setUnlocks] = useState<UnlockItem[]>([]);
   const [goalEnabled, setGoalEnabled] = useState(false);
   const [goalLabel, setGoalLabel] = useState("");
   const [goalTarget, setGoalTarget] = useState("");
@@ -61,6 +73,7 @@ export function EditProfilePage() {
       setBio(profile?.bio ?? "");
       setAvatar(profile?.avatar ?? "");
       setLinks(profile?.links ?? []);
+      setUnlocks(profile?.unlocks ?? []);
       if (profile?.goal) {
         setGoalEnabled(true);
         setGoalLabel(profile.goal.label);
@@ -133,6 +146,17 @@ export function EditProfilePage() {
     setLinks(links.filter((_, i) => i !== idx));
   }
 
+  function addUnlock() {
+    if (unlocks.length >= MAX_UNLOCKS) return;
+    setUnlocks([...unlocks, {id: makeUnlockId(), title: "", price: "1", token: GOAL_TOKENS[1] ?? GOAL_TOKENS[0], content: ""}]);
+  }
+  function updateUnlock(idx: number, field: "title" | "price" | "token" | "content", value: string) {
+    setUnlocks(unlocks.map((u, i) => (i === idx ? {...u, [field]: value} : u)));
+  }
+  function removeUnlock(idx: number) {
+    setUnlocks(unlocks.filter((_, i) => i !== idx));
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (pageState.kind !== "ready" || !walletAddress) return;
@@ -145,6 +169,10 @@ export function EditProfilePage() {
       .map((l) => ({label: l.label.trim(), url: l.url.trim()}))
       .filter((l) => l.label && l.url);
 
+    const cleanedUnlocks = unlocks
+      .map((u) => ({...u, title: u.title.trim(), price: u.price.trim(), content: u.content.trim()}))
+      .filter((u) => u.title && u.content && /^\d*\.?\d+$/.test(u.price) && parseFloat(u.price) > 0);
+
     const metadataURI = encodeMetadata({
       name: displayName.trim() || normalized,
       bio: bio.trim(),
@@ -153,6 +181,7 @@ export function EditProfilePage() {
       goal: goalEnabled && goalLabel.trim() && goalTarget.trim()
         ? {label: goalLabel.trim(), target: goalTarget.trim(), token: goalToken}
         : undefined,
+      unlocks: cleanedUnlocks.length > 0 ? cleanedUnlocks : undefined,
     });
 
     try {
@@ -323,6 +352,56 @@ export function EditProfilePage() {
                 </div>
                 <p className="hint">Progress bar appears on your tip page once tips start arriving.</p>
               </div>
+            )}
+          </div>
+
+          {/* Tip-to-unlock */}
+          <div>
+            <div className="links-header">
+              <span className="label">Locked content <span className="opt">(pay-to-unlock, up to {MAX_UNLOCKS})</span></span>
+              {unlocks.length < MAX_UNLOCKS && (
+                <button type="button" className="btn-secondary btn-sm" onClick={addUnlock} disabled={isSaving}>+ Add locked item</button>
+              )}
+            </div>
+            {unlocks.length === 0 && <p className="hint">Lock a link or message behind a one-tap stablecoin payment — supporters pay to reveal it.</p>}
+            <div className="links-list">
+              {unlocks.map((item, idx) => (
+                <div key={item.id} className="goal-editor">
+                  <input
+                    type="text"
+                    placeholder="Title (shown while locked)"
+                    value={item.title}
+                    onChange={(e) => updateUnlock(idx, "title", e.target.value.slice(0, 80))}
+                    disabled={isSaving}
+                  />
+                  <div className="goal-amount-row">
+                    <input
+                      type="number"
+                      step="any"
+                      min="0"
+                      placeholder="Price"
+                      value={item.price}
+                      onChange={(e) => updateUnlock(idx, "price", e.target.value)}
+                      disabled={isSaving}
+                      className="goal-amount-input"
+                    />
+                    <select value={item.token} onChange={(e) => updateUnlock(idx, "token", e.target.value)} disabled={isSaving} className="goal-token-select">
+                      {GOAL_TOKENS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <button type="button" className="btn-secondary btn-sm link-remove-btn" onClick={() => removeUnlock(idx)} disabled={isSaving} aria-label="Remove">✕</button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Unlocked content — URL or message"
+                    value={item.content}
+                    onChange={(e) => updateUnlock(idx, "content", e.target.value.slice(0, 500))}
+                    disabled={isSaving}
+                  />
+                </div>
+              ))}
+            </div>
+            {unlocks.length > 0 && (
+              <p className="hint">Soft gate: content is revealed client-side after the on-chain payment. Don't lock secrets you can't risk being seen.</p>
             )}
           </div>
 
