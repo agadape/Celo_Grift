@@ -1,4 +1,4 @@
-# SawerLink
+# Zap
 
 **Cross-chain creator tipping on Celo — "Saweria for Web3"**
 
@@ -156,9 +156,9 @@ CELOSCAN_API_KEY=<key> forge script script/Deploy.s.sol \
 
 Inspired by [Saweria.co](https://saweria.co) — Indonesia's leading creator tip platform (5–6% fee, fiat-only, 1M+ monthly visits).
 
-**SawerLink positioning:**
+**Zap positioning:**
 
-| | Saweria | SawerLink |
+| | Saweria | Zap |
 |--|---------|-----------|
 | Fee | 5–6% | ~sub-cent gas only |
 | Custody | Platform holds funds | Non-custodial, direct wallet |
