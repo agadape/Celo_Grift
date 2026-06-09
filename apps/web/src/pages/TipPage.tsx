@@ -91,6 +91,7 @@ export function TipPage() {
   const [subStatus, setSubStatus] = useState<SubStatus>({kind: "idle"});
   const [yieldEnabled, setYieldEnabled] = useState(false);
   const hasInjectedWallet = typeof window !== "undefined" && Boolean(window.ethereum);
+  const isMiniPay = typeof window !== "undefined" && Boolean(window.ethereum?.isMiniPay);
 
   const selectedToken = CELO_TOKENS[selectedTokenIdx] ?? CELO_TOKENS[0];
   const presets = selectedToken.address === "native" ? PRESETS_CELO : PRESETS_STABLE;
@@ -446,33 +447,46 @@ export function TipPage() {
       <form className="creator-panel" onSubmit={handleTip}>
         {!supporterAddress ? (
           <>
-            <p>Connect a wallet to tip @{creator.handle}.</p>
-            {hasInjectedWallet ? (
-              <button type="button" onClick={handleConnect}>Connect Wallet</button>
+            {isMiniPay ? (
+              tipStatus.kind === "error" ? (
+                <>
+                  <p className="hint">Couldn't connect to MiniPay.</p>
+                  <button type="button" onClick={handleConnect}>Retry connection</button>
+                </>
+              ) : (
+                <p className="hint">Connecting to MiniPay…</p>
+              )
             ) : (
-              <div className="no-wallet-fallback">
-                <p className="hint">No wallet detected. Paste your Celo address below.</p>
-                <input
-                  type="text"
-                  placeholder="0x… your Celo address"
-                  value={manualAddress}
-                  onChange={(e) => setManualAddress(e.target.value.trim())}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (/^0x[0-9a-fA-F]{40}$/.test(manualAddress)) {
-                      setSupporterAddress(manualAddress as Address);
-                    } else {
-                      setTipStatus({kind: "error", message: "Enter a valid 0x Celo address."});
-                    }
-                  }}
-                >
-                  Use this address
-                </button>
-              </div>
+              <>
+                <p>Connect a wallet to tip @{creator.handle}.</p>
+                {hasInjectedWallet ? (
+                  <button type="button" onClick={handleConnect}>Connect Wallet</button>
+                ) : (
+                  <div className="no-wallet-fallback">
+                    <p className="hint">No wallet detected. Paste your Celo address below.</p>
+                    <input
+                      type="text"
+                      placeholder="0x… your Celo address"
+                      value={manualAddress}
+                      onChange={(e) => setManualAddress(e.target.value.trim())}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (/^0x[0-9a-fA-F]{40}$/.test(manualAddress)) {
+                          setSupporterAddress(manualAddress as Address);
+                        } else {
+                          setTipStatus({kind: "error", message: "Enter a valid 0x Celo address."});
+                        }
+                      }}
+                    >
+                      Use this address
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </>
         ) : (
