@@ -49,6 +49,18 @@ function tokenIdxFromSymbol(symbol: string | null): number {
   return CELO_TOKENS.findIndex((t) => t.symbol.toLowerCase() === symbol.toLowerCase());
 }
 
+// Initial token index: explicit ?token= wins; else inside MiniPay default to the
+// first feeCurrency stablecoin (cUSD) so gas can be paid in-token; else native CELO.
+function resolveInitialTokenIdx(tokenParam: string | null): number {
+  const idx = tokenIdxFromSymbol(tokenParam);
+  if (idx >= 0) return idx;
+  if (typeof window !== "undefined" && window.ethereum?.isMiniPay) {
+    const stableIdx = CELO_TOKENS.findIndex((t) => t.feeCurrency);
+    if (stableIdx >= 0) return stableIdx;
+  }
+  return 0;
+}
+
 export function TipPage() {
   const {handle = ""} = useParams();
   const normalized = handle.toLowerCase();
@@ -58,13 +70,15 @@ export function TipPage() {
   const [supporterAddress, setSupporterAddress] = useState<Address | null>(null);
   const [manualAddress, setManualAddress] = useState("");
   // Prefill token / amount / message from deep-link query params (?token=cUSD&amount=5&msg=...).
-  const [selectedTokenIdx, setSelectedTokenIdx] = useState(() => {
-    const idx = tokenIdxFromSymbol(searchParams.get("token"));
-    return idx >= 0 ? idx : 0;
-  });
+  // Resolve the initial token once: explicit ?token= wins, else cUSD inside MiniPay
+  // (users hold stablecoins and have no native CELO for gas), else native CELO.
+  const initialTokenIdx = resolveInitialTokenIdx(searchParams.get("token"));
+  const [selectedTokenIdx, setSelectedTokenIdx] = useState(initialTokenIdx);
   const [amount, setAmount] = useState(() => {
     const a = searchParams.get("amount");
-    return a && /^\d*\.?\d+$/.test(a) && parseFloat(a) > 0 ? a : "0.1";
+    if (a && /^\d*\.?\d+$/.test(a) && parseFloat(a) > 0) return a;
+    // Token-aware default so it matches the preset row (CELO: 0.1, stablecoin: 1).
+    return CELO_TOKENS[initialTokenIdx]?.address === "native" ? "0.1" : "1";
   });
   const [message, setMessage] = useState(() => searchParams.get("msg")?.slice(0, 200) ?? "");
   const [reaction, setReaction] = useState("");
