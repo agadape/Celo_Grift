@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useState} from "react";
-import {Link, useParams} from "react-router-dom";
+import {Link, useParams, useSearchParams} from "react-router-dom";
 import {parseUnits, formatUnits, encodeFunctionData, type Address} from "viem";
 import {connectWallet, getWalletClient} from "../lib/wallet";
 import {publicClient, ACTIVE_CHAIN} from "../lib/publicClient";
@@ -43,16 +43,30 @@ function getGoalTokenAddress(symbol: string): string {
   return t ? (t.address as string) : ZERO_ADDRESS;
 }
 
+// Deep-link prefill: map a ?token= symbol to its index, -1 if unknown.
+function tokenIdxFromSymbol(symbol: string | null): number {
+  if (!symbol) return -1;
+  return CELO_TOKENS.findIndex((t) => t.symbol.toLowerCase() === symbol.toLowerCase());
+}
+
 export function TipPage() {
   const {handle = ""} = useParams();
   const normalized = handle.toLowerCase();
+  const [searchParams] = useSearchParams();
 
   const [lookup, setLookup] = useState<LookupState>({kind: "loading"});
   const [supporterAddress, setSupporterAddress] = useState<Address | null>(null);
   const [manualAddress, setManualAddress] = useState("");
-  const [selectedTokenIdx, setSelectedTokenIdx] = useState(0);
-  const [amount, setAmount] = useState("0.1");
-  const [message, setMessage] = useState("");
+  // Prefill token / amount / message from deep-link query params (?token=cUSD&amount=5&msg=...).
+  const [selectedTokenIdx, setSelectedTokenIdx] = useState(() => {
+    const idx = tokenIdxFromSymbol(searchParams.get("token"));
+    return idx >= 0 ? idx : 0;
+  });
+  const [amount, setAmount] = useState(() => {
+    const a = searchParams.get("amount");
+    return a && /^\d*\.?\d+$/.test(a) && parseFloat(a) > 0 ? a : "0.1";
+  });
+  const [message, setMessage] = useState(() => searchParams.get("msg")?.slice(0, 200) ?? "");
   const [reaction, setReaction] = useState("");
   const [mediaUrl, setMediaUrl] = useState("");
   const [showQR, setShowQR] = useState(false);
