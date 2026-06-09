@@ -9,8 +9,9 @@ coverage
 *.log
 *.tsbuildinfo
 
-# Claude Code memory
-.claude/
+# Claude Code memory (ignore everything except version-controlled project skills)
+.claude/*
+!.claude/skills/
 
 # Foundry
 contracts/out/
