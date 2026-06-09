@@ -4,7 +4,7 @@ import {encodeFunctionData} from "viem";
 import {ACTIVE_CHAIN} from "./publicClient";
 import {ERC20_ABI, SOURCE_CHAIN_RPCS, isNativeToken} from "./tokens";
 
-createConfig({integrator: "sawerlink-celo-proof-of-ship"});
+createConfig({integrator: "zap-celo-proof-of-ship"});
 
 export type CrossChainQuoteResult =
   | {kind: "ok"; step: LiFiStep; toAmount: string; tool: string}

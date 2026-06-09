@@ -40,7 +40,7 @@ export function HomePage() {
       <section className="hero">
         <div className="hero-copy">
           <p className="eyebrow">Celo · {ACTIVE_CHAIN.name}</p>
-          <h1>SawerLink</h1>
+          <h1>Zap</h1>
           <p className="lede">
             One creator tipping link. Supporters pay from any LI.FI-supported
             chain. Creators receive stablecoins on Celo MiniPay.
@@ -76,7 +76,7 @@ export function HomePage() {
             </li>
             <li>
               <strong>Share.</strong> Get a link like{" "}
-              <code>sawerlink.app/s/yourname</code>.
+              <code>zap.app/s/yourname</code>.
             </li>
             <li>
               <strong>Receive.</strong> Supporters tip in stablecoins. Receipts land on-chain.
@@ -85,11 +85,11 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="workflow" aria-label="Why SawerLink">
+      <section className="workflow" aria-label="Why Zap">
         <article>
           <span>1</span>
           <h2>No platform cut</h2>
-          <p>Saweria charges 5–6%. SawerLink charges sub-cent gas only.</p>
+          <p>Saweria charges 5–6%. Zap charges sub-cent gas only.</p>
         </article>
         <article>
           <span>2</span>

@@ -168,7 +168,7 @@ export function CreatePage() {
         ← Back
       </Link>
 
-      <h1 className="page-title">Create your SawerLink</h1>
+      <h1 className="page-title">Create your Zap</h1>
       <p className="lede">
         Reserve a handle on {ACTIVE_CHAIN.name}. Your wallet becomes the payout address.
       </p>
@@ -194,7 +194,7 @@ export function CreatePage() {
           <label>
             <span className="label">Handle</span>
             <div className="handle-input">
-              <span>sawerlink.app/s/</span>
+              <span>zap.app/s/</span>
               <input
                 type="text"
                 value={handle}
