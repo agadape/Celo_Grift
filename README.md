@@ -6,7 +6,7 @@ Creators register a handle, share a link (`/s/yourname`), and supporters on any 
 
 **Live:** https://celo-grift-web.vercel.app
 
-Built for [Celo Proof of Ship](https://talent.app/~/earn/celo-proof-of-ship) — May 2026.
+Built for [Celo Proof of Ship](https://talent.app/~/earn/celo-proof-of-ship) — June 2026.
 
 ---
 
@@ -57,16 +57,16 @@ Built for [Celo Proof of Ship](https://talent.app/~/earn/celo-proof-of-ship) —
 
 | Network | Address | Explorer |
 |---------|---------|---------|
-| **Celo Mainnet** | [`0x7132Ae4BF031bAe1260f32c467D1914E7DCda647`](https://explorer.celo.org/mainnet/address/0x7132Ae4BF031bAe1260f32c467D1914E7DCda647) | [Blockscout](https://explorer.celo.org/mainnet) |
-| Celo Sepolia (testnet) | [`0x8A8C3E9Ed4e1C00645a31d44bA4Ec8A76F6d4017`](https://celo-sepolia.blockscout.com/address/0x8a8c3e9ed4e1c00645a31d44ba4ec8a76f6d4017) | [Blockscout](https://celo-sepolia.blockscout.com) |
+| **Celo Mainnet** (v5) | [`0x2112A54d0b3Df6c0f553E05459E75835A92570f1`](https://explorer.celo.org/mainnet/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1) | [Blockscout](https://explorer.celo.org/mainnet/address/0x2112A54d0b3Df6c0f553E05459E75835A92570f1) |
+| Celo Sepolia (testnet, v5) | [`0xa4b56B42724364443b6e2979A2206Ee535801f4b`](https://celo-sepolia.blockscout.com/address/0xa4b56B42724364443b6e2979A2206Ee535801f4b) | [Blockscout](https://celo-sepolia.blockscout.com/address/0xa4b56B42724364443b6e2979A2206Ee535801f4b) |
 
-### On-chain evidence
+### On-chain evidence (Celo Mainnet)
 
-| Event | Network | Tx hash |
-|-------|---------|---------|
-| Contract deploy (mainnet) | Celo Mainnet | `0x578d7a57f4114f7964ba9f397bec390f2be71170fc4689961675efdd39bc43a2` |
-| Contract deploy (testnet v2) | Celo Sepolia | `0x899dc7bcb37e9a5aa53b7c2cafb0b961ced55a92b11440da336bfed00c65e725` |
-| First `registerCreator` | Celo Sepolia | `0x42b8acd7d02c5601b6e6c246ca8d419339f281c8543701dca34fc63754d3b4ad` |
+| Event | Tx hash |
+|-------|---------|
+| Contract deploy | [`0xdb66ec3fe22040db664ec3a9573810d7c43a269395146970b189e08f88b5a11e`](https://explorer.celo.org/mainnet/tx/0xdb66ec3fe22040db664ec3a9573810d7c43a269395146970b189e08f88b5a11e) |
+| `registerCreator` (handle `wewewe`) | [`0xa35c801d3c83dfff9852d0ab5175201fc6090ef249ba63f3aa984353ec465417`](https://explorer.celo.org/mainnet/tx/0xa35c801d3c83dfff9852d0ab5175201fc6090ef249ba63f3aa984353ec465417) |
+| `TipReceipt` (0.001 CELO, native) | [`0x2d7511550a902ec8441c8d530817cbee446d9a2003f5df885178077d105f9f05`](https://explorer.celo.org/mainnet/tx/0x2d7511550a902ec8441c8d530817cbee446d9a2003f5df885178077d105f9f05) |
 
 ---
 
@@ -111,7 +111,11 @@ MetaMask or MiniPay required. The app auto-prompts to add/switch chain.
 ```solidity
 registerCreator(handle, metadataURI)           // reserve handle, payout = msg.sender
 updateMetadata(handle, newMetadataURI)         // creator-only profile update
-recordTip(handle, token, amount, msg, routeId) // emits TipReceipt event
+tip(handle, token, amount, msg, routeId)       // single-tx: transfers funds + emits TipReceipt
+recordTip(handle, token, amount, msg, routeId) // log-only receipt (e.g. after a LI.FI bridge)
+setYieldStrategy(handle, strategy)             // opt-in: auto-supply native tips to Aave V3
+setSubConfig(handle, enabled, priceWei)        // enable monthly subscriptions at a price
+subscribe(handle)                              // pay priceWei → 30-day on-chain subscription
 ```
 
 Metadata is stored as an inline JSON data URI on-chain:
@@ -168,13 +172,16 @@ Inspired by [Saweria.co](https://saweria.co) — Indonesia's leading creator tip
 ## Proof of Ship checklist
 
 - [x] Smart contract deployed and verified on Celo Sepolia
-- [x] Smart contract deployed on Celo Mainnet (`0x7132Ae4BF031bAe1260f32c467D1914E7DCda647`)
+- [x] Smart contract deployed on Celo Mainnet (`0x2112A54d0b3Df6c0f553E05459E75835A92570f1`)
 - [x] Frontend live at https://celo-grift-web.vercel.app
 - [x] MiniPay auto-connect + MetaMask + manual address fallback
 - [x] Real on-chain `registerCreator` transaction (Celo Sepolia)
 - [x] Creator profile: name, bio, avatar, social links stored on-chain
 - [x] Creator-editable profile via `updateMetadata` (ownership enforced)
+- [x] Single-transaction tipping (`tip()` transfers funds + emits receipt in one call)
 - [x] Tip in CELO (native), cUSD, USDC, USDT with feeCurrency support
+- [x] Monthly on-chain subscriptions (`setSubConfig` / `subscribe`, 30-day expiry)
+- [x] Opt-in Aave V3 yield — creators can auto-supply native tips for passive yield
 - [x] LI.FI cross-chain quote + bridge from ETH/Polygon/Base/Arbitrum/Optimism
 - [x] Live tip feed via `getLogs` (real-time event indexing)
 - [x] Tip goal with on-chain progress bar
