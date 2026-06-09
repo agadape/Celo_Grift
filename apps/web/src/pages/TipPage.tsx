@@ -7,7 +7,7 @@ import {SAWER_REGISTRY_ABI, getActiveRegistry, handleHash} from "../lib/contract
 import {CrossChainQuote} from "../components/CrossChainQuote";
 import {TipFeed, type TipEntry, formatTipAmount} from "../components/TipFeed";
 import {decodeMetadata} from "../lib/metadata";
-import {CELO_TOKENS, ERC20_ABI} from "../lib/tokens";
+import {CELO_TOKENS, ERC20_ABI, type CeloToken} from "../lib/tokens";
 import {buildMessage, isValidMediaUrl, mediaHint} from "../lib/media";
 
 const REGISTRY = getActiveRegistry();
@@ -198,6 +198,71 @@ export function TipPage() {
     }
   }
 
+  // Shared tip sender: native CELO in one writeContract; ERC-20 as approve (if
+  // needed) → tip via eth_sendTransaction with feeCurrency. Returns the tip tx
+  // hash. Used by the main tip form and by tip-to-unlock (different routeId).
+  async function sendTipTx(
+    creatorHandle: string,
+    token: CeloToken,
+    amountParsed: bigint,
+    message: string,
+    routeId: `0x${string}`,
+    onStep: (step: "approve" | "tip") => void,
+  ): Promise<`0x${string}`> {
+    if (!supporterAddress) throw new Error("Connect your wallet first.");
+    const walletClient = getWalletClient();
+    const ethereum = window.ethereum;
+    if (!ethereum) throw new Error("No wallet found.");
+
+    if (token.address === "native") {
+      // Native CELO: single tx — transfer + receipt in one call
+      onStep("tip");
+      const txHash = await walletClient.writeContract({
+        account: supporterAddress,
+        address: REGISTRY.address,
+        abi: SAWER_REGISTRY_ABI,
+        functionName: "tip",
+        args: [creatorHandle, ZERO_ADDRESS, amountParsed, message, routeId],
+        value: amountParsed,
+      });
+      await publicClient.waitForTransactionReceipt({hash: txHash});
+      return txHash;
+    }
+
+    // ERC-20: approve (if needed) → tip — at most 2 txs, usually 1
+    const tokenAddr = token.address;
+    const allowance = await publicClient.readContract({
+      address: tokenAddr,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [supporterAddress, REGISTRY.address],
+    });
+    if (allowance < amountParsed) {
+      onStep("approve");
+      const approveData = encodeFunctionData({
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [REGISTRY.address, amountParsed],
+      });
+      const approveTxParams: Record<string, unknown> = {from: supporterAddress, to: tokenAddr, data: approveData};
+      if (token.feeCurrency) approveTxParams.feeCurrency = token.feeCurrency;
+      const approveTx = (await ethereum.request({method: "eth_sendTransaction", params: [approveTxParams]})) as `0x${string}`;
+      await publicClient.waitForTransactionReceipt({hash: approveTx});
+    }
+
+    onStep("tip");
+    const tipData = encodeFunctionData({
+      abi: SAWER_REGISTRY_ABI,
+      functionName: "tip",
+      args: [creatorHandle, tokenAddr, amountParsed, message, routeId],
+    });
+    const tipTxParams: Record<string, unknown> = {from: supporterAddress, to: REGISTRY.address, data: tipData};
+    if (token.feeCurrency) tipTxParams.feeCurrency = token.feeCurrency;
+    const txHash = (await ethereum.request({method: "eth_sendTransaction", params: [tipTxParams]})) as `0x${string}`;
+    await publicClient.waitForTransactionReceipt({hash: txHash});
+    return txHash;
+  }
+
   async function handleTip(event: React.FormEvent) {
     event.preventDefault();
     if (lookup.kind !== "found" || !supporterAddress) {
@@ -219,59 +284,15 @@ export function TipPage() {
     const fullMessage = buildMessage(message, isSubscriber ? (reaction || "👑") : reaction, mediaUrl).slice(0, 400);
 
     try {
-      const walletClient = getWalletClient();
-      const ethereum = window.ethereum;
-      if (!ethereum) throw new Error("No wallet found.");
-
-      if (selectedToken.address === "native") {
-        // Native CELO: single tx — transfer + receipt in one call
-        setTipStatus({kind: "sending", step: "tip"});
-        const txHash = await walletClient.writeContract({
-          account: supporterAddress,
-          address: REGISTRY.address,
-          abi: SAWER_REGISTRY_ABI,
-          functionName: "tip",
-          args: [lookup.creator.handle, ZERO_ADDRESS, amountParsed, fullMessage, ZERO_BYTES32],
-          value: amountParsed,
-        });
-        await publicClient.waitForTransactionReceipt({hash: txHash});
-        setTipStatus({kind: "success", txHash});
-      } else {
-        // ERC-20: approve (if needed) → tip — at most 2 txs, usually 1
-        const tokenAddr = selectedToken.address;
-        const allowance = await publicClient.readContract({
-          address: tokenAddr,
-          abi: ERC20_ABI,
-          functionName: "allowance",
-          args: [supporterAddress, REGISTRY.address],
-        });
-
-        if (allowance < amountParsed) {
-          setTipStatus({kind: "sending", step: "approve"});
-          const approveData = encodeFunctionData({
-            abi: ERC20_ABI,
-            functionName: "approve",
-            args: [REGISTRY.address, amountParsed],
-          });
-          const approveTxParams: Record<string, unknown> = {from: supporterAddress, to: tokenAddr, data: approveData};
-          if (selectedToken.feeCurrency) approveTxParams.feeCurrency = selectedToken.feeCurrency;
-          const approveTx = (await ethereum.request({method: "eth_sendTransaction", params: [approveTxParams]})) as `0x${string}`;
-          await publicClient.waitForTransactionReceipt({hash: approveTx});
-        }
-
-        setTipStatus({kind: "sending", step: "tip"});
-        const tipData = encodeFunctionData({
-          abi: SAWER_REGISTRY_ABI,
-          functionName: "tip",
-          args: [lookup.creator.handle, tokenAddr, amountParsed, fullMessage, ZERO_BYTES32],
-        });
-        const tipTxParams: Record<string, unknown> = {from: supporterAddress, to: REGISTRY.address, data: tipData};
-        if (selectedToken.feeCurrency) tipTxParams.feeCurrency = selectedToken.feeCurrency;
-        const txHash = (await ethereum.request({method: "eth_sendTransaction", params: [tipTxParams]})) as `0x${string}`;
-        await publicClient.waitForTransactionReceipt({hash: txHash});
-        setTipStatus({kind: "success", txHash});
-      }
-
+      const txHash = await sendTipTx(
+        lookup.creator.handle,
+        selectedToken,
+        amountParsed,
+        fullMessage,
+        ZERO_BYTES32,
+        (step) => setTipStatus({kind: "sending", step}),
+      );
+      setTipStatus({kind: "success", txHash});
       setMessage("");
       setReaction("");
       setMediaUrl("");
