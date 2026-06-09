@@ -6,6 +6,7 @@ import {publicClient, ACTIVE_CHAIN} from "../lib/publicClient";
 import {SAWER_REGISTRY_ABI, getActiveRegistry, handleHash} from "../lib/contract";
 import {TipFeed} from "../components/TipFeed";
 import {decodeMetadata} from "../lib/metadata";
+import {CELO_TOKENS} from "../lib/tokens";
 
 const REGISTRY = getActiveRegistry();
 
@@ -36,6 +37,13 @@ export function DashboardPage() {
   const [ovPos, setOvPos] = useState("bottom-center");
   const [ovAccent, setOvAccent] = useState("#35d07f");
   const [ovDur, setOvDur] = useState(7);
+
+  // One-tap tip link builder
+  const [linkAmount, setLinkAmount] = useState("5");
+  const [linkTokenIdx, setLinkTokenIdx] = useState(() => {
+    const i = CELO_TOKENS.findIndex((t) => t.feeCurrency);
+    return i >= 0 ? i : 0;
+  });
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.ethereum?.isMiniPay) void handleConnect();
@@ -128,6 +136,14 @@ export function DashboardPage() {
     return `${base}?pos=${ovPos}&accent=${accent}&dur=${ovDur}`;
   }
 
+  function buildOneTapUrl(handle: string) {
+    const token = CELO_TOKENS[linkTokenIdx]?.symbol ?? "cUSD";
+    const params = new URLSearchParams({token});
+    const amt = linkAmount.trim();
+    if (/^\d*\.?\d+$/.test(amt) && parseFloat(amt) > 0) params.set("amount", amt);
+    return `${window.location.origin}/s/${handle}?${params.toString()}`;
+  }
+
   return (
     <main className="shell narrow">
       <Link to="/" className="back-link">← Back</Link>
@@ -153,6 +169,7 @@ export function DashboardPage() {
         const profile = decodeMetadata(dashState.metadataURI);
         const displayName = profile?.name || `@${dashState.handle}`;
         const tipUrl = `${window.location.origin}/s/${dashState.handle}`;
+        const oneTapUrl = buildOneTapUrl(dashState.handle);
         const overlayUrl = buildOverlayUrl(dashState.handle);
         const embedCode = `<iframe src="${tipUrl}" width="420" height="700" frameborder="0" style="border:none;border-radius:12px;" title="Tip ${displayName}"></iframe>`;
 
@@ -197,6 +214,36 @@ export function DashboardPage() {
                   <code className="dash-link">{tipUrl}</code>
                   <button type="button" className="btn-secondary btn-sm" onClick={() => copy(tipUrl, "tip")}>
                     {copied === "tip" ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{marginTop: 12}}>
+                <span className="label">One-tap tip link</span>
+                <p className="hint">A pre-filled link — opens the tip page ready to send, one tap in MiniPay.</p>
+                <div className="overlay-config">
+                  <label className="ov-config-row">
+                    <span>Amount</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={linkAmount}
+                      onChange={(e) => setLinkAmount(e.target.value.trim())}
+                      placeholder="5"
+                      style={{maxWidth: 110}}
+                    />
+                  </label>
+                  <label className="ov-config-row">
+                    <span>Token</span>
+                    <select value={linkTokenIdx} onChange={(e) => setLinkTokenIdx(Number(e.target.value))}>
+                      {CELO_TOKENS.map((t, i) => <option key={t.symbol} value={i}>{t.symbol}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="dash-link-row">
+                  <code className="dash-link">{oneTapUrl}</code>
+                  <button type="button" className="btn-secondary btn-sm" onClick={() => copy(oneTapUrl, "onetap")}>
+                    {copied === "onetap" ? "Copied!" : "Copy"}
                   </button>
                 </div>
               </div>
