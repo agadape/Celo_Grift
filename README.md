@@ -4,6 +4,8 @@
 
 Creators register a handle, share a link (`/s/yourname`), and supporters on any LI.FI-supported chain tip them in CELO or stablecoins. Non-custodial, zero platform fee, instant settlement.
 
+More than a tip jar — a full **creator monetization suite**: tips, **pay-to-unlock** content, **monthly subscriptions**, and **live stream overlays**. Not just a payment link.
+
 **Live:** https://celo-grift-web.vercel.app
 
 Built for [Celo Proof of Ship](https://talent.app/~/earn/celo-proof-of-ship) — June 2026.
@@ -88,8 +90,8 @@ Built for [Celo Proof of Ship](https://talent.app/~/earn/celo-proof-of-ship) —
 ## Run locally
 
 ```bash
-git clone https://github.com/agadape/Celo_Grift.git
-cd Celo_Grift
+git clone https://github.com/agadape/Celo_Zap.git
+cd Celo_Zap
 npm install
 
 cp apps/web/.env.example apps/web/.env
