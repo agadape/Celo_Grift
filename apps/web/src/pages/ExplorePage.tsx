@@ -61,7 +61,7 @@ export function ExplorePage() {
     <main className="shell narrow" style={{maxWidth: 860}}>
       <Link to="/" className="back-link">← Back</Link>
       <h1 className="page-title">Explore creators</h1>
-      <p className="lede">Everyone on SawerLink on {ACTIVE_CHAIN.name}.</p>
+      <p className="lede">Everyone on Zap on {ACTIVE_CHAIN.name}.</p>
 
       {loading && (
         <div className="skeleton-grid">

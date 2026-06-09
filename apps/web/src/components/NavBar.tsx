@@ -10,7 +10,7 @@ export function NavBar() {
           <circle cx="26" cy="13" r="5" fill="#fff" />
           <circle cx="36.6" cy="33" r="5" fill="#fff" />
         </svg>
-        <span>SawerLink</span>
+        <span>Zap</span>
       </NavLink>
 
       <div className="navbar-links">

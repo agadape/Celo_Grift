@@ -51,8 +51,8 @@ export function LeaderboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    document.title = "Leaderboard · SawerLink";
-    return () => { document.title = "SawerLink"; };
+    document.title = "Leaderboard · Zap";
+    return () => { document.title = "Zap"; };
   }, []);
 
   useEffect(() => {
@@ -145,7 +145,7 @@ export function LeaderboardPage() {
     <main className="shell narrow" style={{maxWidth: 860}}>
       <Link to="/" className="back-link">← Back</Link>
       <h1 className="page-title">Leaderboard</h1>
-      <p className="lede">Top creators and biggest tips on SawerLink.</p>
+      <p className="lede">Top creators and biggest tips on Zap.</p>
 
       {loading && (
         <div className="lb-grid">

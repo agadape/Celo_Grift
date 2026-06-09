@@ -197,9 +197,9 @@ export function TipPage() {
   useEffect(() => {
     if (lookup.kind === "found") {
       const name = decodeMetadata(lookup.creator.metadataURI)?.name || `@${lookup.creator.handle}`;
-      document.title = `Tip ${name} · SawerLink`;
+      document.title = `Tip ${name} · Zap`;
     }
-    return () => { document.title = "SawerLink"; };
+    return () => { document.title = "Zap"; };
   }, [lookup]);
 
   function handleTokenChange(idx: number) {
@@ -437,7 +437,7 @@ export function TipPage() {
         {profile?.avatar && (
           <img className="creator-avatar" src={profile.avatar} alt={displayName} width={64} height={64} />
         )}
-        <p className="eyebrow">SawerLink</p>
+        <p className="eyebrow">Zap</p>
         <h1 className="page-title">{displayName}</h1>
         {profile?.bio && <p className="creator-bio">{profile.bio}</p>}
 
